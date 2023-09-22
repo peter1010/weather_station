@@ -14,12 +14,13 @@ struct Bme688 {
     par_t1 : i32,
     par_t2 : i32,
     par_t3 : i32,
+
     par_p1 : f64,
     par_p2 : f64,
     par_p3 : f64,
     par_p4 : f64,
-    par_p5 : f64,
-    par_p6 : f64,
+    par_p5 : i32,
+    par_p6 : i32,
     par_p7 : f64,
     par_p8 : i16,
     par_p9 : i16,
@@ -32,6 +33,7 @@ struct Bme688 {
     par_h6 : i8,
     par_h7 : i8,
 
+    t_fine : i32,
     temperature : f64
 }
 
@@ -66,8 +68,8 @@ impl Bme688 {
     fn new() -> Result<Self,LinuxI2CError> {
         let mut dev = LinuxI2CDevice::new("/dev/i2c-4", BME688_ADDR)?;
 
-        let par_t1 = (((dev.smbus_read_byte_data(0xEA).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0xE9).unwrap() as u16)) as i32;
+        let par_t1 = ((((dev.smbus_read_byte_data(0xEA).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0xE9).unwrap() as u16)) as i32) << 4;
 
         let par_t2 = ((((dev.smbus_read_byte_data(0x8B).unwrap() as u16) << 8)
             | (dev.smbus_read_byte_data(0x8A).unwrap() as u16)) as i16) as i32;
@@ -89,10 +91,10 @@ impl Bme688 {
         let par_p4 = ((((((dev.smbus_read_byte_data(0x95).unwrap() as u16) << 8)
             | (dev.smbus_read_byte_data(0x94).unwrap() as u16)) as i16) as i32) * 65536) as f64;
 
-        let par_p5 = ((((((dev.smbus_read_byte_data(0x97).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x96).unwrap() as u16)) as i16) as i32) * 2) as f64;
+        let par_p5 = (((((dev.smbus_read_byte_data(0x97).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x96).unwrap() as u16)) as i16) as i32) * 2;
 
-        let par_p6 = ((dev.smbus_read_byte_data(0x99).unwrap() as i8) as f64) / 131072.0;
+        let par_p6 = (dev.smbus_read_byte_data(0x99).unwrap() as i8) as i32;
 
         let par_p7 = (((dev.smbus_read_byte_data(0x98).unwrap() as i8) as i16) * 128) as f64;
 
@@ -143,6 +145,7 @@ impl Bme688 {
             par_t1, par_t2, par_t3,
             par_p1, par_p2, par_p3, par_p4, par_p5, par_p6, par_p7, par_p8, par_p9, par_p10,
             par_h1, par_h2, par_h3, par_h4, par_h5, par_h6, par_h7,
+            t_fine : 0,
             temperature : 0.0
         };
         Ok(this)
@@ -202,25 +205,25 @@ impl Bme688 {
     fn read_temp(&mut self, field :u8) -> f64 {
 
         let temp_adc = self.read_temp_adc(field) as i32;
-        let par_t1 = self.par_t1 as i32;
-        let par_t2 = self.par_t2 as i32;
-        let par_t3 = self.par_t3 as i32;
+        // At most 20 bits
 
-        let var1 = (temp_adc >> 3) - (self.par_t1 << 1);
-        let var2 = (var1 * self.par_t2) >> 11;
-        let var3 = ((((var1 >> 1) * (var1 >> 1)) >> 12) * (self.par_t3 << 4)) >> 14;
-        let temp = ((var2 + var3) as f64) / 5120.0;
+        let var1 = (temp_adc - self.par_t1) as i64;
+        // At most 20 bits
 
-//        let var1 = ((temp_adc / 16384.0) - (par_t1 / 1024.0)) * par_t2;
-//        println!("var1 {:?}", var1);
+        let var2 = var1 * (self.par_t2 as i64);
+        // At most 20 + 16 = 36 bits
 
-//        let var2 = (((temp_adc / 131072.0) - (par_t1 / 8192.0)) *
-//            ((temp_adc / 131072.0) - (par_t1 / 8192.0))) *
-//            (par_t3 * 16.0);
+        let var3 = ((var1 * var1) * (self.par_t3 as i64)) >> 16;
+        // Atmost 20 + 20 + 8 - 16 = 32 bits
 
-//        let temp = (var1 + var2) / 5120.0;
+        let t_fine = ((var2 + var3) >> 14) as i32;
+        // At most 37 - 14 = 23 bits
 
+        let temp = (t_fine as f64) / 5120.0;
+
+        self.t_fine = t_fine;
         self.temperature = temp;
+
         println!("temp_comp {:?}", temp);
         temp
     }
@@ -233,13 +236,18 @@ impl Bme688 {
         let par_p8 = f64::from(self.par_p8);
         let par_p9 = f64::from(self.par_p9);
         let par_p10 = f64::from(self.par_p10);
-        let t_fine = self.temperature * 5120.0;
 
-        let var1 = (t_fine / 2.0) - 64000.0;
-        let var2 = var1 * var1 * self.par_p6;
+        let var1 = ((self.t_fine >> 1) - 64000) as i64;
+        // At most 22 bits
 
-        let var2 = var2 + (var1 * self.par_p5);
+        let var2 = ((var1 * var1 * (self.par_p6 as i64)) as f64) / 131072.0;
+        // At most 22 + 22 + 8 - ?
+
+        let var2 = var2 + (var1 * (self.par_p5 as i64)) as f64;
+        // At most var2 or (22 + 17)
         let var2 = (var2 / 4.0) + self.par_p4;
+
+        let var1 = var1 as f64;
         let var1 = ((self.par_p3 * var1 * var1) / 16384.0 + (self.par_p2 * var1)) / 524288.0;
 
         let var1 = (1.0 + (var1 / 32768.0)) * self.par_p1;
