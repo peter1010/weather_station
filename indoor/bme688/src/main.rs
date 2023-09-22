@@ -15,16 +15,17 @@ struct Bme688 {
     par_t2 : i32,
     par_t3 : i32,
 
-    par_p1 : f64,
-    par_p2 : f64,
-    par_p3 : f64,
-    par_p4 : f64,
+    par_p1 : i32,
+    par_p2 : i32,
+    par_p3 : i32,
+    par_p4 : i32,
     par_p5 : i32,
     par_p6 : i32,
-    par_p7 : f64,
-    par_p8 : i16,
-    par_p9 : i16,
-    par_p10 : u8,
+    par_p7 : i32,
+    par_p8 : i32,
+    par_p9 : i32,
+    par_p10 :i32,
+
     par_h1 : u16,
     par_h2 : u16,
     par_h3 : i8,
@@ -81,30 +82,30 @@ impl Bme688 {
         println!("par_t3 {:?}", par_t3);
 
         let par_p1 = (((dev.smbus_read_byte_data(0x8F).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x8E).unwrap() as u16)) as f64;
+            | (dev.smbus_read_byte_data(0x8E).unwrap() as u16)) as i32;
 
         let par_p2 = ((((dev.smbus_read_byte_data(0x91).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x90).unwrap() as u16)) as i16) as f64;
+            | (dev.smbus_read_byte_data(0x90).unwrap() as u16)) as i16) as i32;
 
-        let par_p3 = (dev.smbus_read_byte_data(0x92).unwrap() as i8) as f64;
+        let par_p3 = (dev.smbus_read_byte_data(0x92).unwrap() as i8) as i32;
 
-        let par_p4 = ((((((dev.smbus_read_byte_data(0x95).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x94).unwrap() as u16)) as i16) as i32) * 65536) as f64;
+        let par_p4 = ((((dev.smbus_read_byte_data(0x95).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x94).unwrap() as u16)) as i16) as i32;
 
-        let par_p5 = (((((dev.smbus_read_byte_data(0x97).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x96).unwrap() as u16)) as i16) as i32) * 2;
+        let par_p5 = ((((dev.smbus_read_byte_data(0x97).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x96).unwrap() as u16)) as i16) as i32;
 
         let par_p6 = (dev.smbus_read_byte_data(0x99).unwrap() as i8) as i32;
 
-        let par_p7 = (((dev.smbus_read_byte_data(0x98).unwrap() as i8) as i16) * 128) as f64;
+        let par_p7 = (dev.smbus_read_byte_data(0x98).unwrap() as i8) as i32;
 
-        let par_p8 = (((dev.smbus_read_byte_data(0x9D).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x9C).unwrap() as u16)) as i16;
+        let par_p8 = ((((dev.smbus_read_byte_data(0x9D).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x9C).unwrap() as u16)) as i16) as i32;
 
-        let par_p9 = (((dev.smbus_read_byte_data(0x9F).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x9E).unwrap() as u16)) as i16;
+        let par_p9 = ((((dev.smbus_read_byte_data(0x9F).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x9E).unwrap() as u16)) as i16) as i32;
 
-        let par_p10 = dev.smbus_read_byte_data(0xA0).unwrap();
+        let par_p10 = (dev.smbus_read_byte_data(0xA0).unwrap() as u32) as i32;
 
         println!("par_p1 {:?}", par_p1);
         println!("par_p2 {:?}", par_p2);
@@ -179,13 +180,13 @@ impl Bme688 {
     }
 
 
-    fn read_press_adc(&mut self, field :u8) -> u32 {
+    fn read_press_adc(&mut self, field :u8) -> i32 {
         let base : u8 = 0x1F + 0x11 * field;
         let msb = self.dev.smbus_read_byte_data(base + 0x00).unwrap() as u32;
         let lsb = self.dev.smbus_read_byte_data(base + 0x01).unwrap() as u32;
         let xlsb = self.dev.smbus_read_byte_data(base + 0x02).unwrap() as u32;
 
-        let adc = (msb << 12) | (lsb << 4) | (xlsb >> 4);
+        let adc = ((msb << 12) | (lsb << 4) | (xlsb >> 4)) as i32;
         println!("press_adc {:?}", adc);
         adc
     }
@@ -231,35 +232,38 @@ impl Bme688 {
 
     fn read_press(&mut self, field: u8) -> f64 {
 
-        let press_adc = f64::from(self.read_press_adc(field));
-
-        let par_p8 = f64::from(self.par_p8);
-        let par_p9 = f64::from(self.par_p9);
-        let par_p10 = f64::from(self.par_p10);
+        let press_adc = self.read_press_adc(field);
+        // At most 22 bits
 
         let var1 = ((self.t_fine >> 1) - 64000) as i64;
         // At most 22 bits
 
-        let var2 = ((var1 * var1 * (self.par_p6 as i64)) as f64) / 131072.0;
-        // At most 22 + 22 + 8 - ?
+        let par_p6 = self.par_p6 as i64; // At most 8 bits
+        let par_p5 = self.par_p5 as i64; // At most 17 bits
+        let par_p4 = self.par_p4 as i64; // At most 16 bits
 
-        let var2 = var2 + (var1 * (self.par_p5 as i64)) as f64;
-        // At most var2 or (22 + 17)
-        let var2 = (var2 / 4.0) + self.par_p4;
+        let var2 = ((var1 * var1 * par_p6) >> 18) + (var1 * par_p5) + (par_p4 << 17);
+        // At most 22 + 22 + 8 - 18 = 34
+        let var2 = var2 >> 13;
+        // At most 21
 
-        let var1 = var1 as f64;
-        let var1 = ((self.par_p3 * var1 * var1) / 16384.0 + (self.par_p2 * var1)) / 524288.0;
+        let par_p3 = self.par_p3 as i64; // At most 8 bits
+        let par_p2 = self.par_p2 as i64; // At most 16 bits
+        let par_p1 = self.par_p1 as i64; // At most 16 bits
 
-        let var1 = (1.0 + (var1 / 32768.0)) * self.par_p1;
-        let press_comp = 1048576.0 - press_adc;
-        let press_comp = ((press_comp - (var2 / 4096.0)) * 6250.0) / var1;
-        let var1 = (par_p9 * press_comp * press_comp) / 2147483648.0;
-        let var2 = press_comp * (par_p8 / 32768.0);
-        let var3 = (press_comp / 256.0) * (press_comp / 256.0) *
-            (press_comp / 256.0) * (par_p10 / 131072.0);
-        let press_comp = press_comp + (var1 + var2 + var3 + self.par_p7) / 16.0;
+        let var1 = ((var1 * var1 * par_p3) >> 16) + (par_p2 * var1);
+        let var1 = ((32768 + (var1 >> 19)) * par_p1) >> 15;
+
+        let press_comp = ((((1048576 - press_adc) as i64 - var2) * 3125) << 1) / var1;
+
+        let var1 = ((self.par_p9 as i64) * (press_comp * press_comp)) >> 31;
+        let var2 = (press_comp * (self.par_p8 as i64)) >> 15;
+        let var3 = ((press_comp >> 8) * (press_comp >> 8) * (press_comp >> 8) * (self.par_p10 as i64)) >> 17;
+        let press_comp = press_comp + ((var1 + var2 + var3 + ((self.par_p7 as i64) << 7)) >> 4);
+
+
         println!("press_comp {:?}", press_comp);
-        press_comp
+        press_comp as f64
     }
 
 
