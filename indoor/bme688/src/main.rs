@@ -12,16 +12,17 @@ struct Bme688 {
     temp_oversampling : u8,
     pres_oversampling : u8,
 
-    par_ta : i8,
-    par_tb : i32,
-    par_tc : i64,
+    par_ta : f64,
+    par_tb : f64,
+    par_tc : f64,
+
+    par_pvar2a : f64,
+    par_pvar2b : f64,
+    par_pvar2c : f64,
 
     par_p1 : i32,
     par_p2 : i32,
     par_p3 : i32,
-    par_p4 : i32,
-    par_p5 : i32,
-    par_p6 : i32,
     par_p7 : i32,
     par_p8 : i32,
     par_p9 : i32,
@@ -35,7 +36,6 @@ struct Bme688 {
     par_h6 : i8,
     par_h7 : i8,
 
-    t_fine : i32,
     temperature : f64,
 }
 
@@ -78,14 +78,6 @@ impl Bme688 {
 
         let par_p3 = (dev.smbus_read_byte_data(0x92).unwrap() as i8) as i32;
 
-        let par_p4 = ((((dev.smbus_read_byte_data(0x95).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x94).unwrap() as u16)) as i16) as i32;
-
-        let par_p5 = ((((dev.smbus_read_byte_data(0x97).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x96).unwrap() as u16)) as i16) as i32;
-
-        let par_p6 = (dev.smbus_read_byte_data(0x99).unwrap() as i8) as i32;
-
         let par_p7 = (dev.smbus_read_byte_data(0x98).unwrap() as i8) as i32;
 
         let par_p8 = ((((dev.smbus_read_byte_data(0x9D).unwrap() as u16) << 8)
@@ -99,9 +91,6 @@ impl Bme688 {
         println!("par_p1 {:?}", par_p1);
         println!("par_p2 {:?}", par_p2);
         println!("par_p3 {:?}", par_p3);
-        println!("par_p4 {:?}", par_p4);
-        println!("par_p5 {:?}", par_p5);
-        println!("par_p6 {:?}", par_p6);
         println!("par_p7 {:?}", par_p7);
         println!("par_p8 {:?}", par_p8);
         println!("par_p9 {:?}", par_p9);
@@ -132,10 +121,10 @@ impl Bme688 {
             hum_oversampling : 0,
             temp_oversampling : 0,
             pres_oversampling : 0,
-            par_ta :0, par_tb :0, par_tc :0,
-            par_p1, par_p2, par_p3, par_p4, par_p5, par_p6, par_p7, par_p8, par_p9, par_p10,
+            par_ta : 0.0, par_tb : 0.0, par_tc : 0.0,
+            par_pvar2a : 0.0, par_pvar2b : 0.0, par_pvar2c: 0.0,
+            par_p1, par_p2, par_p3, par_p7, par_p8, par_p9, par_p10,
             par_h1, par_h2, par_h3, par_h4, par_h5, par_h6, par_h7,
-            t_fine : 0,
             temperature : 0.0,
         };
         Ok(this)
@@ -156,6 +145,8 @@ impl Bme688 {
 
         let par_t3 = dev.smbus_read_byte_data(0x8C).unwrap() as i8;
 
+        println!("");
+        println!("Calculating Temp equation...");
         println!("par_t1 {:?}", par_t1);
         println!("par_t2 {:?}", par_t2);
         println!("par_t3 {:?}", par_t3);
@@ -181,40 +172,115 @@ impl Bme688 {
         //   = - (par_t1 * par_t2) / 2^10 + (par_t1^2 * par_t3) / 2^22
 
         let a = par_t3;
-        let b = ((par_t2 as i32) << 16) - (((par_t1 as i32) * (par_t3 as i32)) << 5);
-        let c = - ((((par_t1 as i32) * (par_t2 as i32)) as i64) << 20) + (((par_t1 as i64) * (par_t1 as i64) * (par_t3 as i64)) << 8);
+        let b = (((par_t2 as i32) << 11) - ((par_t1 as i32) * (par_t3 as i32))) << 5;
+        let c = (-((((par_t1 as i32) * (par_t2 as i32)) as i64) << 12) + ((par_t1 as i64) * (par_t1 as i64) * (par_t3 as i64))) << 8;
 
-        println!("A {:?}", a);
-        println!("B {:?}", b);
-        println!("C {:?}", c);
-        self.par_ta = a;
-        self.par_tb = b;
-        self.par_tc = c;
+        let denom = 2.0_f64.powi(-40) * 0.2;
+
+        self.par_ta = (a as f64) * denom;
+        self.par_tb = (b as f64) * denom;
+        self.par_tc = (c as f64) * denom;
+
+        println!("Temp(C) = {:?} * adc^2 + {:?} * adc + {:?}", self.par_ta, self.par_tb, self.par_tc);
     }
 
-    fn get_pressure_params(&mut self) {
 
-        // var1 = (t_fine / 2.0) - 64000.0;
-        // var2 = var1 * var1 * (par_p6 / 131072.0);
-        // var2 = var2 + (var1 * par_p5 * 2.0);
-        // var2 = (var2 / 4.0) + (par_p4 * 65536.0);
+    fn get_pressure_params(&mut self) {
+        // par_p4 is a i16
+        // par_p5 is a i16
+        // par_p6 is a i8
+
+        let dev = &mut self.dev;
+
+        let par_p4 = (((dev.smbus_read_byte_data(0x95).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x94).unwrap() as u16)) as i16;
+
+        let par_p5 = (((dev.smbus_read_byte_data(0x97).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x96).unwrap() as u16)) as i16;
+
+        let par_p6 = dev.smbus_read_byte_data(0x99).unwrap() as i8;
+
+        println!("");
+        println!("Calculating Pressure var2 equation...");
+        println!("par_p4 {:?}", par_p4);
+        println!("par_p5 {:?}", par_p5);
+        println!("par_p6 {:?}", par_p6);
+
+
+        // From the Datasheet...
+        // temp = t_fine * 5120
+        // var1 = (t_fine / 2) - 64000;
+        // var1a = var1 * var1 * (par_p6 / 131072);
+        // var1b = var1a + (var1 * par_p5 * 2);
+        // var2 = (var1b / 4) + (par_p4 * 65536);
         //
-        // var2 = (var1 * var1 * (par_p6 / (4 * 131072)) + (var1 * par_p5)/2 + (par_p4 * 65536);
-        //
+        // var2 = ((var1a + (var1 * par_p5 * 2)) / 4) + (par_p4 * 2^16);
+        // var2 = (((var1^2 * par_p6 /2^17) + (var1 * par_p5 * 2) / 4) + par_p4 * 2^16);
+        // var2 = (var1^2  * par_p6 / 2^19) + (var1 * par_p5)/2 + (par_p4 * 2^16);
+
+        // 64000 = 2^9 * 125
         // 32000 = 2^8 * 125
+        // 131072 = 2^17
+        // 65536 = 2^16
+        // 5120 = 5 * 2^10
+
         // var2 = A * t_fine^2 + B * t_fine + C
-        // A = par_p6 / (4 * 4 * 131072)
-        //   = par_p6 / 2^21
-        // B = - 64000 * par_p6 / 2^21 + par_p5 / 4
-        //   = -125 * par_p6 / 2^12 + par_pr / 2^2
-        // C = (64000 * 64000) * par_p6 / 2^21 - 32000 * par_p5 + (par_p4 * 2^16)
-        //   = 125^2 * par_p6 / 2^3 - 125 * 2^8 * par_p5 + (par_p4 * 2^16)
+        // A = 5120^2 * par_p6 / 2^21
+        //   = 5^2 * par_p6 / 2
+        // B = 5120 * (-64000 * par_p6 / 2^19 + par_p5 / 4)
+        //   = 5 * (-125 * par_p6 + 5 * par_p5 * 2^8)
+        // C = 64000^2 * par_p6 / 2^19 - 32000 * par_p5 + (par_p4 * 2^16)
+        //   = 125^2 * par_p6 / 2 - 125 * 2^8 * par_p5 + (par_p4 * 2^16)
         //
-        // var1 = (((par_p3 * var1 * var1) / 16384.0) +
-        //   (par_p2 * var1)) / 524288.0;
-        // var1 = (1.0 + (var1 / 32768.0)) * par_p1;
+        let a = 25 * (par_p6 as i16);
+        let b = 5 * ((-125 * (par_p6 as i32)) + ((par_p5 as i32) << 8)) << 1;
+        let c = (125 * 125 * (par_p6 as i64)) - ((125 * (par_p5 as i64)) << 9) + ((par_p4 as i64) << 17);
+
+        self.par_pvar2a = a as f64;
+        self.par_pvar2b = b as f64;
+        self.par_pvar2c = c as f64;
+
+        println!("Pres var2 = {:?} * temp^2 + {:?} * temp + {:?}", self.par_pvar2a, self.par_pvar2b, self.par_pvar2c);
+
+        let par_p1 = ((dev.smbus_read_byte_data(0x8F).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x8E).unwrap() as u16);
+
+        let par_p2 = (((dev.smbus_read_byte_data(0x91).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x90).unwrap() as u16)) as i16;
+
+        let par_p3 = dev.smbus_read_byte_data(0x92).unwrap() as i8;
+
+        println!("");
+        println!("Calculating Pressure var1 equation...");
+        println!("par_p1 {:?}", par_p1);
+        println!("par_p2 {:?}", par_p2);
+        println!("par_p3 {:?}", par_p3);
+
+        // From the Datasheet...
+        // t_fine = temp * 5120
+        // var1 = (t_fine / 2) - 64000;
+        // var1a = (((par_p3 * var1 * var1) / 16384) + (par_p2 * var1)) / 524288;
+        // var1b = (1 + (var1a / 32768)) * par_p1;
         //
-        // var1 = (1 + 
+        // var1b = par_p1 + (var1a * par_p1) / 2^15;
+        // var1b = par_p1 + ((((par_p3 * var1 * var1) /2^14) + (par_p2 * var1)) / 2^19) /2^15)) * par_p1
+        // var1b = par_p1 + (par_p1 * par_p3 * var1^2) / 2^29 + (par_p1 * par_p2 * var1) / 2^34
+
+        // var1 = A * t_fine^2 + B * t_fine + C
+        // A = par_p1 * par_p3 / 2^31
+        // B = -64000 * par_p1 * par_p3 / 2^29 + par_p1 * par_p2 / 2^35
+        //  = -125 * par_p1 * par_p3 / 2^20 + par_p1 * par_p2 / 2^35
+        // C = par_p1 + 64000^2 * par_p1 * par_p3 / 2^29 - 64000 * par_p1 * par_p2 / 2^34
+        //   = par_p1 + 125^2 * par_p1 * par_p3 / 2^11 - 125 * par_p1 * par_p2 / 2^25
+
+        let par_p13 = (par_p1 as i32) * (par_p3 as i32);
+        let par_p12 = (par_p1 as i32) * (par_p2 as i32);
+
+        let a = par_p13 << 4;
+        let b = ((-125 * (par_p13 as i64)) << 6) + (par_p12 as i64);
+        let c = (((par_p1 as i64) << 25) + ((125 * 125 * (par_p13 as i64)) << 14) - (125 * (par_p12 as i64))) << 10;
+
+        println!("Pres var1 = (({:?} * temp^2 + {:?} * temp + {:?}) >> 35)", a, b, c);
     }
 
     fn set_humdity_oversampling(&mut self, oversampling : u8) {
@@ -269,17 +335,30 @@ impl Bme688 {
 
     fn read_temp(&mut self, field :u8) -> f64 {
 
-        let temp_adc = self.read_temp_adc(field) as i64;
+        let temp_adc = self.read_temp_adc(field) as f64;
         // At most 20 bits
 
-        let t_fine = ((self.par_ta as i64) * temp_adc * temp_adc + (self.par_tb as i64) * temp_adc + self.par_tc) >> 30;
-        let temp = (t_fine as f64) / 5120.0;
+        let temp = self.par_ta * temp_adc * temp_adc + self.par_tb * temp_adc + self.par_tc;
 
-        self.t_fine = t_fine as i32;
         self.temperature = temp;
 
         println!("temp_comp {:?}", temp);
         temp
+    }
+
+    fn get_press_temp_vars(&mut self) -> i64 {
+
+        let temp = self.temperature;
+        let var2 = self.par_pvar2a  * temp * temp + self.par_pvar2b  * temp + self.par_pvar2c;
+
+        let var2 = (var2 as i64) >> 13;
+        println!("var2 = {:?}", var2);
+
+//        let var1 = self.par_pvar1a  * temp * temp + self.par_pvar1b  * temp + self.par_pvar1c;
+
+//        let var1 = (var1 as i64) >> 13;
+//        println!("var1 = {:?}", var1);
+        var2
     }
 
 
@@ -288,21 +367,15 @@ impl Bme688 {
         let press_adc = self.read_press_adc(field);
         // At most 22 bits
 
-        let var1 = ((self.t_fine >> 1) - 64000) as i64;
-        // At most 22 bits
-
-        let par_p6 = self.par_p6 as i64; // At most 8 bits
-        let par_p5 = self.par_p5 as i64; // At most 17 bits
-        let par_p4 = self.par_p4 as i64; // At most 16 bits
-
-        let var2 = ((var1 * var1 * par_p6) >> 18) + (var1 * par_p5) + (par_p4 << 17);
-        // At most 22 + 22 + 8 - 18 = 34
-        let var2 = var2 >> 13;
-        // At most 21
+        let var2 = self.get_press_temp_vars();
 
         let par_p3 = self.par_p3 as i64; // At most 8 bits
         let par_p2 = self.par_p2 as i64; // At most 16 bits
         let par_p1 = self.par_p1 as i64; // At most 16 bits
+
+        let t_fine = (self.temperature * 5120.0) as i32;
+        let var1 = ((t_fine >> 1) - 64000) as i64;
+        // At most 22 bits
 
         let var1 = ((var1 * var1 * par_p3) >> 16) + (par_p2 * var1);
         let var1 = (32768 + (var1 >> 19)) * par_p1;
@@ -371,6 +444,7 @@ fn main() {
     let mut drv =  Bme688::new().unwrap();
 
     drv.get_temperature_params();
+    drv.get_pressure_params();
 
     drv.set_humdity_oversampling(1);
     drv.set_pressure_oversampling(16);
