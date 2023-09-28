@@ -16,13 +16,14 @@ struct Bme688 {
     par_tb : f64,
     par_tc : f64,
 
+    par_pvar1a : f64,
+    par_pvar1b : f64,
+    par_pvar1c : f64,
+
     par_pvar2a : f64,
     par_pvar2b : f64,
     par_pvar2c : f64,
 
-    par_p1 : i32,
-    par_p2 : i32,
-    par_p3 : i32,
     par_p7 : i32,
     par_p8 : i32,
     par_p9 : i32,
@@ -70,14 +71,6 @@ impl Bme688 {
     fn new() -> Result<Self,LinuxI2CError> {
         let mut dev = LinuxI2CDevice::new("/dev/i2c-4", BME688_ADDR)?;
 
-        let par_p1 = (((dev.smbus_read_byte_data(0x8F).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x8E).unwrap() as u16)) as i32;
-
-        let par_p2 = ((((dev.smbus_read_byte_data(0x91).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x90).unwrap() as u16)) as i16) as i32;
-
-        let par_p3 = (dev.smbus_read_byte_data(0x92).unwrap() as i8) as i32;
-
         let par_p7 = (dev.smbus_read_byte_data(0x98).unwrap() as i8) as i32;
 
         let par_p8 = ((((dev.smbus_read_byte_data(0x9D).unwrap() as u16) << 8)
@@ -88,9 +81,6 @@ impl Bme688 {
 
         let par_p10 = (dev.smbus_read_byte_data(0xA0).unwrap() as u32) as i32;
 
-        println!("par_p1 {:?}", par_p1);
-        println!("par_p2 {:?}", par_p2);
-        println!("par_p3 {:?}", par_p3);
         println!("par_p7 {:?}", par_p7);
         println!("par_p8 {:?}", par_p8);
         println!("par_p9 {:?}", par_p9);
@@ -122,8 +112,9 @@ impl Bme688 {
             temp_oversampling : 0,
             pres_oversampling : 0,
             par_ta : 0.0, par_tb : 0.0, par_tc : 0.0,
+            par_pvar1a : 0.0, par_pvar1b : 0.0, par_pvar1c : 0.0,
             par_pvar2a : 0.0, par_pvar2b : 0.0, par_pvar2c: 0.0,
-            par_p1, par_p2, par_p3, par_p7, par_p8, par_p9, par_p10,
+            par_p7, par_p8, par_p9, par_p10,
             par_h1, par_h2, par_h3, par_h4, par_h5, par_h6, par_h7,
             temperature : 0.0,
         };
@@ -163,18 +154,29 @@ impl Bme688 {
         // 8192 = 2^13
         // 1024 = 2^10
 
-        // temp = A * (temp_adc)^2 + B * temp_adc + C
+        // t_fine = A * (temp_adc)^2 + B * temp_adc + C, find A,B and C
+        // Collecting temp_adc^2, temp_adc and the constant terms from equations above, 
+        // Note: prime versions are 2^30 bigger i.e. A' = A * 2^30
         // A = (par_t3 * 16) / (131072 * 131072)
+        //   = (par_t3 * 2^4) / (2^17 * 2^17)
         //   = par_t3 / 2^30
+        // A' = par_t3
         // B = (par_t2/16384) - 2 * (par_t3 * 16) * (par_t1 / (8192 * 131072))
-        //   = par_t2 / 2^14 - (par_t1 * par_t3) / 2^25
+        //   = (par_t2 / 2^14) - (2^1 * par_t3 * 2^4 * par_t1 / (2^13 * 2^17))
+        //   = (par_t2 / 2^14) - ((par_t1 * par_t3) / 2^25)
+        // B' = (par_t2 * 2^16) - ((par_t1 * par_t3) * 2^5)
         // C = - (par_t1 * par_t2) / 1024 + (par_t1 * par_t1 * par_t3 * 16) / (8192 * 8192)
+        //   = - (par_t1 * par_t2) / 2^10 + (par_t1 * par_t1 * par_t3 * 2^4) / (2^13 * 2^13)
         //   = - (par_t1 * par_t2) / 2^10 + (par_t1^2 * par_t3) / 2^22
+        // C' = - (par_t1 * par_t2) * 2^20 + (par_t1^2 * par_t3) * 2^8
+        let par_t13 = (par_t1 as i32) * (par_t3 as i32);
+        let par_t12 = (par_t1 as i32) * (par_t2 as i32);
 
         let a = par_t3;
-        let b = (((par_t2 as i32) << 11) - ((par_t1 as i32) * (par_t3 as i32))) << 5;
-        let c = (-((((par_t1 as i32) * (par_t2 as i32)) as i64) << 12) + ((par_t1 as i64) * (par_t1 as i64) * (par_t3 as i64))) << 8;
+        let b = (((par_t2 as i32) << 11) - par_t13) << 5;
+        let c = (-((par_t12 as i64) << 12) + (par_t1 as i64) * (par_t13 as i64)) << 8;
 
+        // 2^-30 / 5120
         let denom = 2.0_f64.powi(-40) * 0.2;
 
         self.par_ta = (a as f64) * denom;
@@ -214,8 +216,10 @@ impl Bme688 {
         // var1b = var1a + (var1 * par_p5 * 2);
         // var2 = (var1b / 4) + (par_p4 * 65536);
         //
-        // var2 = ((var1a + (var1 * par_p5 * 2)) / 4) + (par_p4 * 2^16);
-        // var2 = (((var1^2 * par_p6 /2^17) + (var1 * par_p5 * 2) / 4) + par_p4 * 2^16);
+        // var2 = (var1b / 2^2) + (par_p4 * 2^16);
+        // var2 = ((var1a + (var1 * par_p5 * 2)) / 2^2) + (par_p4 * 2^16);
+        // var2 = (var1a / 2^2) + (var1 * par_p5 /2) + (par_p4 * 2^16);
+        // var2 = (((var1^2 * par_p6 /2^17 / 2^2) + (var1 * par_p5)/2 + (par_p4 * 2^16);
         // var2 = (var1^2  * par_p6 / 2^19) + (var1 * par_p5)/2 + (par_p4 * 2^16);
 
         // 64000 = 2^9 * 125
@@ -225,20 +229,29 @@ impl Bme688 {
         // 5120 = 5 * 2^10
 
         // var2 = A * t_fine^2 + B * t_fine + C
-        // A = 5120^2 * par_p6 / 2^21
-        //   = 5^2 * par_p6 / 2
-        // B = 5120 * (-64000 * par_p6 / 2^19 + par_p5 / 4)
-        //   = 5 * (-125 * par_p6 + 5 * par_p5 * 2^8)
+        // A = 5120^2 * 2^-2 * par_p6 / 2^19
+        //   = 5^2 * 2^20 * 2^-2 * par_p6 / 2^19
+        //   = 5^2 * par_p6 / 2^1
+        // A' = 5^2 * par_p6
+        // B = 5120 * (-64000 * par_p6 / 2^19 + par_p5 / 2 / 2)
+        //   = 5 * 2^10 * (-125 * 2^9 * par_p6 / 2^19 + par_p5 / 2^2)
+        //   = 5 * (-125 * par_p6 + par_p5 * 2^8)
+        // B' = 5 * 2 * (-5^3 * par_p6 + par_p5 *2^8)
         // C = 64000^2 * par_p6 / 2^19 - 32000 * par_p5 + (par_p4 * 2^16)
-        //   = 125^2 * par_p6 / 2 - 125 * 2^8 * par_p5 + (par_p4 * 2^16)
-        //
+        //   = (125^2 * 2^18 * par_p6 / 2^19) - (2^8 * 125 * par_p5) + (par_p4 * 2^16)
+        //   = (125^2 * par_p6 / 2) - (125 * 2^8 * par_p5) + (par_p4 * 2^16)
+        // C' = (125^2 * par_p6) - (125 * 2^9 *par_p5) + (par_p4 * 2^17)
+
         let a = 25 * (par_p6 as i16);
-        let b = 5 * ((-125 * (par_p6 as i32)) + ((par_p5 as i32) << 8)) << 1;
+        let b = 10 * ((-125 * (par_p6 as i32)) + ((par_p5 as i32) << 8));
         let c = (125 * 125 * (par_p6 as i64)) - ((125 * (par_p5 as i64)) << 9) + ((par_p4 as i64) << 17);
 
-        self.par_pvar2a = a as f64;
-        self.par_pvar2b = b as f64;
-        self.par_pvar2c = c as f64;
+        // 2^-30 / 5120
+        let denom = 2.0_f64.powi(-13);
+
+        self.par_pvar2a = (a as f64) * denom;
+        self.par_pvar2b = (b as f64) * denom;
+        self.par_pvar2c = (c as f64) * denom;
 
         println!("Pres var2 = {:?} * temp^2 + {:?} * temp + {:?}", self.par_pvar2a, self.par_pvar2b, self.par_pvar2c);
 
@@ -256,32 +269,55 @@ impl Bme688 {
         println!("par_p2 {:?}", par_p2);
         println!("par_p3 {:?}", par_p3);
 
+
         // From the Datasheet...
         // t_fine = temp * 5120
         // var1 = (t_fine / 2) - 64000;
         // var1a = (((par_p3 * var1 * var1) / 16384) + (par_p2 * var1)) / 524288;
         // var1b = (1 + (var1a / 32768)) * par_p1;
         //
-        // var1b = par_p1 + (var1a * par_p1) / 2^15;
-        // var1b = par_p1 + ((((par_p3 * var1 * var1) /2^14) + (par_p2 * var1)) / 2^19) /2^15)) * par_p1
-        // var1b = par_p1 + (par_p1 * par_p3 * var1^2) / 2^29 + (par_p1 * par_p2 * var1) / 2^34
+        // var1b = par_p1 * (1 + var1a / 2^15);
+        // var1b = par_p1 * (1 + ((((par_p3 * var1 * var1) /2^14) + (par_p2 * var1)) / 2^19) /2^15))
+        // var1b = par_p1 * (1 + (par_p3 * var1^2) / 2^48 + ((par_p2 * var1) / 2^34))
+
+
+        // 64000 = 2^9 * 125
+        // 16384 = 2^14
+        // 32768 = 2^15
+        // 524288 = 2^19
+        // 5120 = 5 * 2^10
+
 
         // var1 = A * t_fine^2 + B * t_fine + C
-        // A = par_p1 * par_p3 / 2^31
-        // B = -64000 * par_p1 * par_p3 / 2^29 + par_p1 * par_p2 / 2^35
-        //  = -125 * par_p1 * par_p3 / 2^20 + par_p1 * par_p2 / 2^35
-        // C = par_p1 + 64000^2 * par_p1 * par_p3 / 2^29 - 64000 * par_p1 * par_p2 / 2^34
-        //   = par_p1 + 125^2 * par_p1 * par_p3 / 2^11 - 125 * par_p1 * par_p2 / 2^25
+        // A = 5120^2 * par_p1 * par_p3 / 2^2 * 2^48
+        //   = 25 *2^20 * par_p1 * par_p3 / 2^2 * 2^48
+        //   = 25 * par_p1 * par_p3 / 2^30
+        // A' = 25 * par_p1 * par_p3
+        // B = 5120 * par_p1 *(-64000 * par_p3 / 2^48 +  par_p2 / 2^1 / 2^34)
+        //   = 5120 * par_p1 *(-125 * 2^9 * par_p3 / 2^48 +  par_p2 / 2^35)
+        //   = 5 * 12^10 *par_p1 *(-125 * par_p3 / 2^39 + par_p2 / 2^35)
+        //   = 5 * par_p1 * (-125 * par_p3 / 2^29 + par_p2 / 2^25)
+        // B' = 5 * par_p1 *(-125 * par_p3 * 2 + par_p2 * 2^5)
+        // C = par_p1 * (1 + 64000^2 * par_p3 / 2^48 - (64000 * par_p2 / 2^34))
+        //   = par_p1 * (1 + 125^2 * 2^18 * par_p3 / 2^48) - (125 * 2^9 * par_p2 / 2^34)
+        //   = par_p1 * (1 + 125^2 * par_p3 / 2^30) - (125 * par_p2 / 2^25)
+        // C' = par_p1 * (2^30 + (125^2 * par_p3) - (125 * par_p2 * 2^5))
 
-        let par_p13 = (par_p1 as i32) * (par_p3 as i32);
-        let par_p12 = (par_p1 as i32) * (par_p2 as i32);
+        let a = 25 * (par_p1 as i32) * (par_p3 as i32);
+        let b = 5 * ((par_p1 as i64) * ((-125 * (par_p3 as i64)) + ((par_p2 as i64) << 4))) << 1;
+        let c = (par_p1 as i64) * ((1 << 30) + (125 * 125 * (par_p3 as i64))  - ((125 * (par_p2 as i64)) << 5));
 
-        let a = par_p13 << 4;
-        let b = ((-125 * (par_p13 as i64)) << 6) + (par_p12 as i64);
-        let c = (((par_p1 as i64) << 25) + ((125 * 125 * (par_p13 as i64)) << 14) - (125 * (par_p12 as i64))) << 10;
+        // 35, 19, 15
 
-        println!("Pres var1 = (({:?} * temp^2 + {:?} * temp + {:?}) >> 35)", a, b, c);
+        let denom = 2.0_f64.powi(-30);
+
+        self.par_pvar1a = (a as f64) * denom;
+        self.par_pvar1b = (b as f64) * denom;
+        self.par_pvar1c = (c as f64) * denom;
+
+        println!("Pres var1 = {:?} * temp^2 + {:?} * temp + {:?}", self.par_pvar1a, self.par_pvar1b, self.par_pvar1c);
     }
+
 
     fn set_humdity_oversampling(&mut self, oversampling : u8) {
         self.hum_oversampling = calc_oversampling(oversampling).unwrap();
@@ -335,10 +371,9 @@ impl Bme688 {
 
     fn read_temp(&mut self, field :u8) -> f64 {
 
-        let temp_adc = self.read_temp_adc(field) as f64;
-        // At most 20 bits
+        let adc = self.read_temp_adc(field) as f64;
 
-        let temp = self.par_ta * temp_adc * temp_adc + self.par_tb * temp_adc + self.par_tc;
+        let temp = self.par_ta * adc * adc + self.par_tb * adc + self.par_tc;
 
         self.temperature = temp;
 
@@ -346,19 +381,19 @@ impl Bme688 {
         temp
     }
 
-    fn get_press_temp_vars(&mut self) -> i64 {
+    fn get_press_temp_vars(&mut self) -> (i64, i64) {
 
         let temp = self.temperature;
         let var2 = self.par_pvar2a  * temp * temp + self.par_pvar2b  * temp + self.par_pvar2c;
 
-        let var2 = (var2 as i64) >> 13;
+        let var2 = var2 as i64;
         println!("var2 = {:?}", var2);
 
-//        let var1 = self.par_pvar1a  * temp * temp + self.par_pvar1b  * temp + self.par_pvar1c;
+        let var1 = self.par_pvar1a  * temp * temp + self.par_pvar1b  * temp + self.par_pvar1c;
 
-//        let var1 = (var1 as i64) >> 13;
-//        println!("var1 = {:?}", var1);
-        var2
+        let var1 = var1 as i64;
+        println!("var1 =? {:?}", var1);
+        (var1, var2)
     }
 
 
@@ -367,29 +402,21 @@ impl Bme688 {
         let press_adc = self.read_press_adc(field);
         // At most 22 bits
 
-        let var2 = self.get_press_temp_vars();
+        let (var1, var2) = self.get_press_temp_vars();
 
-        let par_p3 = self.par_p3 as i64; // At most 8 bits
-        let par_p2 = self.par_p2 as i64; // At most 16 bits
-        let par_p1 = self.par_p1 as i64; // At most 16 bits
+        let press_comp = (((1048576 - press_adc) as i64 - var2) * 6250) / var1;
 
-        let t_fine = (self.temperature * 5120.0) as i32;
-        let var1 = ((t_fine >> 1) - 64000) as i64;
-        // At most 22 bits
-
-        let var1 = ((var1 * var1 * par_p3) >> 16) + (par_p2 * var1);
-        let var1 = (32768 + (var1 >> 19)) * par_p1;
-        let var1 = var1 >> 15;
-
-        let press_comp = ((((1048576 - press_adc) as i64 - var2) * 3125) << 1) / var1;
-
+        // A = par_p10 / (2^53)
+        // B = par_p9 / (2^35)
+        // C = 1 + par_p8 / 2^19
+        // D = par_p7 * 2^3
         let var1 = ((self.par_p9 as i64) * (press_comp * press_comp)) >> 31;
         let var2 = (press_comp * (self.par_p8 as i64)) >> 15;
         let var3 = ((press_comp >> 8) * (press_comp >> 8) * (press_comp >> 8) * (self.par_p10 as i64)) >> 17;
         let press_comp = press_comp + ((var1 + var2 + var3 + ((self.par_p7 as i64) << 7)) >> 4);
 
 
-        println!("press_comp {:?}", press_comp);
+        println!("press_comp {:?}", press_comp + 350 * 250/30 );
         press_comp as f64
     }
 
