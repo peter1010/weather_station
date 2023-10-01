@@ -12,31 +12,41 @@ struct Bme688 {
     temp_oversampling : u8,
     pres_oversampling : u8,
 
+    // Temperature params
     par_ta : f64,
     par_tb : f64,
     par_tc : f64,
 
+    // Pressure params
     par_pvar1a : f64,
     par_pvar1b : f64,
     par_pvar1c : f64,
+
+    // last know var1 result. var1 is calculcated from temperature
+    par_pvar1 : f64,
 
     par_pvar2a : f64,
     par_pvar2b : f64,
     par_pvar2c : f64,
 
-    par_p7 : i32,
-    par_p8 : i32,
-    par_p9 : i32,
-    par_p10 :i32,
+    // last know var2 result. var2 is calculcated from temperature
+    par_pvar2 : i64,
 
-    par_h1 : u16,
-    par_h2 : u16,
-    par_h3 : i8,
-    par_h4 : i8,
-    par_h5 : i8,
-    par_h6 : i8,
-    par_h7 : i8,
+    par_pa : f64,
+    par_pb : f64,
+    par_pc : f64,
+    par_pd : f64,
 
+    // Humdity params
+    par_h1 : f64,
+    par_h2 : f64,
+    par_h3 : f64,
+    par_h4 : f64,
+    par_h5 : f64,
+    par_h6 : f64,
+    par_h7 : f64,
+
+    // Last measure temperature
     temperature : f64,
 }
 
@@ -65,46 +75,14 @@ fn calc_oversampling(reqd : u8) -> Result<u8, Bme688Error> {
     Ok(result)
 }
 
+fn two_to_pow(exp : i8) -> f64 {
+    return 2.0_f64.powi(exp as i32)
+}
 
 impl Bme688 {
 
     fn new() -> Result<Self,LinuxI2CError> {
         let mut dev = LinuxI2CDevice::new("/dev/i2c-4", BME688_ADDR)?;
-
-        let par_p7 = (dev.smbus_read_byte_data(0x98).unwrap() as i8) as i32;
-
-        let par_p8 = ((((dev.smbus_read_byte_data(0x9D).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x9C).unwrap() as u16)) as i16) as i32;
-
-        let par_p9 = ((((dev.smbus_read_byte_data(0x9F).unwrap() as u16) << 8)
-            | (dev.smbus_read_byte_data(0x9E).unwrap() as u16)) as i16) as i32;
-
-        let par_p10 = (dev.smbus_read_byte_data(0xA0).unwrap() as u32) as i32;
-
-        println!("par_p7 {:?}", par_p7);
-        println!("par_p8 {:?}", par_p8);
-        println!("par_p9 {:?}", par_p9);
-        println!("par_p10 {:?}", par_p10);
-
-        let tmp = dev.smbus_read_byte_data(0xE2).unwrap() as u16;
-        let par_h1 = ((dev.smbus_read_byte_data(0xE3).unwrap() as u16) << 4)
-                | (tmp & 0x0F);
-        let par_h2 = ((dev.smbus_read_byte_data(0xE1).unwrap() as u16) << 4)
-                | (tmp >> 4);
-        let par_h3 = dev.smbus_read_byte_data(0xE4).unwrap() as i8;
-        let par_h4 = dev.smbus_read_byte_data(0xE5).unwrap() as i8;
-        let par_h5 = dev.smbus_read_byte_data(0xE6).unwrap() as i8;
-        let par_h6 = dev.smbus_read_byte_data(0xE7).unwrap() as i8;
-        let par_h7 = dev.smbus_read_byte_data(0xE8).unwrap() as i8;
-
-        println!("par_h1 {:?}", par_h1);
-        println!("par_h2 {:?}", par_h2);
-        println!("par_h3 {:?}", par_h3);
-        println!("par_h4 {:?}", par_h4);
-        println!("par_h5 {:?}", par_h5);
-        println!("par_h6 {:?}", par_h6);
-        println!("par_h7 {:?}", par_h7);
-
 
         let this = Self {
             dev,
@@ -112,17 +90,17 @@ impl Bme688 {
             temp_oversampling : 0,
             pres_oversampling : 0,
             par_ta : 0.0, par_tb : 0.0, par_tc : 0.0,
-            par_pvar1a : 0.0, par_pvar1b : 0.0, par_pvar1c : 0.0,
-            par_pvar2a : 0.0, par_pvar2b : 0.0, par_pvar2c: 0.0,
-            par_p7, par_p8, par_p9, par_p10,
-            par_h1, par_h2, par_h3, par_h4, par_h5, par_h6, par_h7,
+            par_pvar1a : 0.0, par_pvar1b : 0.0, par_pvar1c : 0.0, par_pvar1: 0.0,
+            par_pvar2a : 0.0, par_pvar2b : 0.0, par_pvar2c: 0.0, par_pvar2: 0,
+            par_pa : 0.0, par_pb : 0.0, par_pc : 0.0, par_pd : 0.0,
+            par_h1 :0.0, par_h2 : 0.0, par_h3 : 0.0, par_h4: 0.0, par_h5: 0.0, par_h6: 0.0, par_h7: 0.0,
             temperature : 0.0,
         };
         Ok(this)
     }
 
 
-    fn get_temperature_params(&mut self) {
+    fn cache_temperature_params(&mut self) {
         // par_t1 is a u16
         // par_t2 is a i16
         // par_t3 is a i8
@@ -146,7 +124,7 @@ impl Bme688 {
         // var1 = ((temp_adc / 16384) - (par_t1 / 1024)) * par_t2;
         // var2 = (((temp_adc / 131072) - (par_t1 / 8192)) * ((temp_adc / 131072) - (par_t1 / 8192))) * (par_t3 * 16);
         // t_fine = var1 + var2;
-        // temp_comp = t_fine / 5120.0
+        // temp = t_fine / 5120.0
 
         // 16 = 2^4
         // 131072 = 2^17
@@ -176,8 +154,8 @@ impl Bme688 {
         let b = (((par_t2 as i32) << 11) - par_t13) << 5;
         let c = (-((par_t12 as i64) << 12) + (par_t1 as i64) * (par_t13 as i64)) << 8;
 
-        // 2^-30 / 5120
-        let denom = 2.0_f64.powi(-40) * 0.2;
+        // 2^-30 / 5120 => to convert t_fine to temperature
+        let denom = two_to_pow(-40) * 0.2;
 
         self.par_ta = (a as f64) * denom;
         self.par_tb = (b as f64) * denom;
@@ -187,7 +165,7 @@ impl Bme688 {
     }
 
 
-    fn get_pressure_params(&mut self) {
+    fn cache_pressure_params(&mut self) {
         // par_p4 is a i16
         // par_p5 is a i16
         // par_p6 is a i8
@@ -246,8 +224,7 @@ impl Bme688 {
         let b = 10 * ((-125 * (par_p6 as i32)) + ((par_p5 as i32) << 8));
         let c = (125 * 125 * (par_p6 as i64)) - ((125 * (par_p5 as i64)) << 9) + ((par_p4 as i64) << 17);
 
-        // 2^-30 / 5120
-        let denom = 2.0_f64.powi(-13);
+        let denom = two_to_pow(-13);
 
         self.par_pvar2a = (a as f64) * denom;
         self.par_pvar2b = (b as f64) * denom;
@@ -309,15 +286,125 @@ impl Bme688 {
 
         // 35, 19, 15
 
-        let denom = 2.0_f64.powi(-30);
+        // 6250 = 2 * 3125
+        let denom = two_to_pow(-31) * 0.00032;
 
         self.par_pvar1a = (a as f64) * denom;
         self.par_pvar1b = (b as f64) * denom;
         self.par_pvar1c = (c as f64) * denom;
 
         println!("Pres var1 = {:?} * temp^2 + {:?} * temp + {:?}", self.par_pvar1a, self.par_pvar1b, self.par_pvar1c);
+
+        let par_p7 = dev.smbus_read_byte_data(0x98).unwrap() as i8;
+
+        let par_p8 = (((dev.smbus_read_byte_data(0x9D).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x9C).unwrap() as u16)) as i16;
+
+        let par_p9 = (((dev.smbus_read_byte_data(0x9F).unwrap() as u16) << 8)
+            | (dev.smbus_read_byte_data(0x9E).unwrap() as u16)) as i16;
+
+        let par_p10 = dev.smbus_read_byte_data(0xA0).unwrap() as i8;
+
+
+        println!("");
+        println!("Calculating Pressure equation...");
+        println!("par_p7 {:?}", par_p7);
+        println!("par_p8 {:?}", par_p8);
+        println!("par_p9 {:?}", par_p9);
+        println!("par_p10 {:?}", par_p10);
+
+
+        // From the Datasheet...
+        // var1 = (par_p9 * press_comp * press_comp) / 2147483648;
+        // var2 = press_comp * (par_p8 / 32768);
+        // var3 = (press_comp / 256) * (press_comp / 256) * (press_comp / 256) * (par_p10 / 131072);
+        // press_comp = press_comp + (var1_p + var2_p + var3_p + (par_p7 * 128)) / 16;
+
+
+        // 16 = 2^4
+        // 256 = 2^8
+        // 32768 = 2^15
+        // 131072 = 2^17
+        // 2147483648 = 2^31;
+
+
+        // pressure = A * press_comp^3 + B * press_comp^2 + C * press_comp + D
+        // A = par_p10/(256 * 256 * 256 * 131072 * 16)
+        //   = par_p10 /(2^8 * 2^8 * 2^8 * 2^17 * 2^4)
+        //   = par_p10 / (2^45)
+        // A' = par_p10
+        // B  = par_p9 / (2^31 * 2^4)
+        //   = par_p9 / (2^35)
+        // B' = par_p9 * 3^10
+        // C  = 1 + par_p8 / (2^15 *2^4)
+        //   = 1 + par_p8 / (2^19)
+        // C' = 2^45 + par_p8 * 2^26
+        // D = 128 * par_p7 / (16)
+        //   = par_p7 * 2^3
+        // D' = par_p7 * 2^48
+
+        let a = par_p10;
+        let b = (par_p9 as i32) << 10; 
+        let c = (1_i64 << 45) + ((par_p8 as i64) << 26);
+        let d = (par_p7 as i64) << 48;
+
+        let denom = two_to_pow(-47) * 0.04;
+
+        self.par_pa = (a as f64) * denom;
+        self.par_pb = (b as f64) * denom;
+        self.par_pc = (c as f64) * denom;
+        self.par_pd = (d as f64) * denom;
+
+        println!("Pressure = {:?} * comp^3 + {:?} * comp^2 + {:?} * comp + {:?}", self.par_pa, self.par_pb, self.par_pc, self.par_pd);
+
     }
 
+
+    fn cache_humditiy_params(&mut self) {
+        let dev = &mut self.dev;
+
+        let tmp = dev.smbus_read_byte_data(0xE2).unwrap() as u16;
+        let par_h1 = ((dev.smbus_read_byte_data(0xE3).unwrap() as u16) << 4)
+                | (tmp & 0x0F);
+        let par_h2 = ((dev.smbus_read_byte_data(0xE1).unwrap() as u16) << 4)
+                | (tmp >> 4);
+        let par_h3 = dev.smbus_read_byte_data(0xE4).unwrap() as i8;
+        let par_h4 = dev.smbus_read_byte_data(0xE5).unwrap() as i8;
+        let par_h5 = dev.smbus_read_byte_data(0xE6).unwrap() as i8;
+        let par_h6 = dev.smbus_read_byte_data(0xE7).unwrap() as i8;
+        let par_h7 = dev.smbus_read_byte_data(0xE8).unwrap() as i8;
+
+        println!("par_h1 {:?}", par_h1);
+        println!("par_h2 {:?}", par_h2);
+        println!("par_h3 {:?}", par_h3);
+        println!("par_h4 {:?}", par_h4);
+        println!("par_h5 {:?}", par_h5);
+        println!("par_h6 {:?}", par_h6);
+        println!("par_h7 {:?}", par_h7);
+
+        // From the Datasheet...
+        // var1 = humd_adc - ((par_h1 * 16) + ((par_h3 / 2) * temp));
+        // var2 = var1 * ((par_h2 / 262144) * (1 + ((par_h4 / 16384) * temp) + ((par_h5 / 1048576) * temp * temp)));
+        // humd_comp = var2 + ((par_h6 / 16384) + ((par_h7 / 2097152) * temp)) * var2 * var2);
+
+        // 16384 = 2^14
+        // 262144 = 2^18
+        //1048576 = 2^20
+        //2097152 = 2^21
+
+        self.par_h1 = (par_h1 << 4) as f64;
+        self.par_h2 = (par_h2 as f64) * two_to_pow(-18);
+        self.par_h3 = (par_h3 as f64) * two_to_pow(-1);
+        self.par_h4 = ((par_h4 as f64) * self.par_h2) * two_to_pow(-14);
+        self.par_h5 = ((par_h5 as f64) * self.par_h2) * two_to_pow(-20);
+        self.par_h6 = (par_h6 as f64) * two_to_pow(-14);
+        self.par_h7 = (par_h7 as f64) * two_to_pow(-21);
+
+        // Becomes...
+        // var1 = humd_adc - par_h1 + par_h3 * temp;
+        // var2 = var1 * (par_h2 + par_h4 * temp + par_h5 * temp * temp);
+        // humd_comp = var2 + (par_h6 + (par_h7 * temp)) * var2 * var2);
+    }
 
     fn set_humdity_oversampling(&mut self, oversampling : u8) {
         self.hum_oversampling = calc_oversampling(oversampling).unwrap();
@@ -375,49 +462,58 @@ impl Bme688 {
 
         let temp = self.par_ta * adc * adc + self.par_tb * adc + self.par_tc;
 
-        self.temperature = temp;
+        if self.temperature != temp {
+            self.temperature = temp;
+            self.cache_press_temp_vars();
+            self.cache_humd_temp_vars();
+        }
 
         println!("temp_comp {:?}", temp);
         temp
     }
 
-    fn get_press_temp_vars(&mut self) -> (i64, i64) {
+    fn cache_press_temp_vars(&mut self) {
 
         let temp = self.temperature;
         let var2 = self.par_pvar2a  * temp * temp + self.par_pvar2b  * temp + self.par_pvar2c;
 
-        let var2 = var2 as i64;
-        println!("var2 = {:?}", var2);
+        self.par_pvar2 = var2 as i64;
+        println!("var2 = {:?}", self.par_pvar2);
 
         let var1 = self.par_pvar1a  * temp * temp + self.par_pvar1b  * temp + self.par_pvar1c;
 
-        let var1 = var1 as i64;
-        println!("var1 =? {:?}", var1);
-        (var1, var2)
+        self.par_pvar1 = var1;
+        println!("var1 = {:?}", self.par_pvar1);
     }
 
+    fn cache_humd_temp_vars(&mut self) {
+        let temp = self.temperature;
+
+        // var1 = humd_adc - par_h1 + par_h3 * temp;
+        // var2 = var1 * (par_h2 + par_h4 * temp + par_h5 * temp * temp);
+        // humd_comp = var2 + (par_h6 + (par_h7 * temp)) * var2 * var2);
+
+        let var3 = self.par_h3 * temp;
+        let var4 = self.par_h2 + self.par_h4 * temp + self.par_h5 * temp * temp;
+        let var5 = self.par_h6 + self.par_h7 * temp;
+
+        // Becomes
+        // var1 = humd_adc - var3;
+        // var2 = var1 * var4;
+        // humd_comp = var2 + var5 * var2 * var2);
+
+    }
 
     fn read_press(&mut self, field: u8) -> f64 {
 
         let press_adc = self.read_press_adc(field);
-        // At most 22 bits
 
-        let (var1, var2) = self.get_press_temp_vars();
+        let comp = (((1048576 - press_adc) as i64 - self.par_pvar2) as f64) / self.par_pvar1;
 
-        let press_comp = (((1048576 - press_adc) as i64 - var2) * 6250) / var1;
+        let pressure = comp * comp * comp * self.par_pa + comp * comp * self.par_pb + comp * self.par_pc + self.par_pd;
 
-        // A = par_p10 / (2^53)
-        // B = par_p9 / (2^35)
-        // C = 1 + par_p8 / 2^19
-        // D = par_p7 * 2^3
-        let var1 = ((self.par_p9 as i64) * (press_comp * press_comp)) >> 31;
-        let var2 = (press_comp * (self.par_p8 as i64)) >> 15;
-        let var3 = ((press_comp >> 8) * (press_comp >> 8) * (press_comp >> 8) * (self.par_p10 as i64)) >> 17;
-        let press_comp = press_comp + ((var1 + var2 + var3 + ((self.par_p7 as i64) << 7)) >> 4);
-
-
-        println!("press_comp {:?}", press_comp + 350 * 250/30 );
-        press_comp as f64
+        println!("press {:?}", pressure + 30_f64);
+        pressure as f64
     }
 
 
@@ -432,12 +528,9 @@ impl Bme688 {
         let par_h6 = f64::from(self.par_h6);
         let par_h7 = f64::from(self.par_h7);
 
-        let var1 = humd_adc - ((par_h1 * 16.0) + ((par_h3 / 2.0) * self.temperature));
-        let var2 = var1 * ((par_h2 / 262144.0) * (1.0 + ((par_h4 / 16384.0) *
-                self.temperature) + ((par_h5 / 1048576.0) * self.temperature * self.temperature)));
-        let var3 = par_h6 / 16384.0;
-        let var4 = par_h7 / 2097152.0;
-        let humd_comp = var2 + ((var3 + (var4 * self.temperature)) * var2 * var2);
+        let var1 = humd_adc - par_h1 + (par_h3 * self.temperature);
+        let var2 = var1 * (par_h2 + par_h4 * self.temperature + par_h5 * self.temperature * self.temperature);
+        let humd_comp = var2 + (par_h6 + (par_h7 * self.temperature)) * var2 * var2;
 
         println!("humdity_comp {:?}", humd_comp);
         humd_comp
@@ -470,8 +563,9 @@ fn main() {
 
     let mut drv =  Bme688::new().unwrap();
 
-    drv.get_temperature_params();
-    drv.get_pressure_params();
+    drv.cache_temperature_params();
+    drv.cache_pressure_params();
+    drv.cache_humditiy_params();
 
     drv.set_humdity_oversampling(1);
     drv.set_pressure_oversampling(16);
