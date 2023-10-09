@@ -92,7 +92,7 @@ fn two_to_pow(exp : i8) -> f64 {
 impl Bme688 {
 
     pub fn new() -> Result<Self,LinuxI2CError> {
-        let dev = LinuxI2CDevice::new("/dev/i2c-4", BME688_ADDR)?;
+        let dev = LinuxI2CDevice::new("/dev/i2c-bme688", BME688_ADDR)?;
 
         let this = Self {
             dev,

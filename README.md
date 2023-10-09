@@ -10,7 +10,7 @@ Weather station based on raspberry pi and perhaps later an arduino(s)
 
 Using BME688 module connected to Raspberry pi.
 
-###Steps
+### Steps
 
 1. Decide which pins to use on raspberry pi for the i2c interface.
 
