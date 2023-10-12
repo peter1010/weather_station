@@ -6,10 +6,7 @@ fn main() {
 
     let mut drv =  Bme688::new().unwrap();
 
-    drv.cache_temperature_params();
-    drv.cache_pressure_params();
-    drv.cache_humditiy_params();
-    drv.cache_gas_params();
+    drv.cache_params();
 
     drv.set_humdity_oversampling(16);
     drv.set_pressure_oversampling(16);

@@ -119,30 +119,36 @@ impl Bme688 {
         self.dev.smbus_write_byte_data(addr, value).unwrap();
     }
 
-    fn read_u16(&mut self, addr : u8) -> u16 {
+    fn read_u16_le(&mut self, addr : u8) -> u16 {
         // little-endian
         ((self.read_u8(addr+1) as u16) << 8) | (self.read_u8(addr) as u16)
+    }
+
+    fn read_u16_be(&mut self, addr : u8) -> u16 {
+        // big-endian
+        ((self.read_u8(addr) as u16) << 8) | (self.read_u8(addr + 1) as u16)
     }
 
     fn read_i8(&mut self, addr : u8) -> i8 {
         self.dev.smbus_read_byte_data(addr).unwrap() as i8
     }
 
-    fn read_i16(&mut self, addr : u8) -> i16 {
-        self.read_u16(addr) as i16
+    fn read_i16_le(&mut self, addr : u8) -> i16 {
+        self.read_u16_le(addr) as i16
     }
 
 
-    pub fn cache_temperature_params(&mut self) {
-        let par_t1 = self.read_u16(0xE9);
-        let par_t2 = self.read_i16(0x8A);
+    ///
+    /// From the Datasheet...
+    /// var1 = ((temp_adc / 16384) - (par_t1 / 1024)) * par_t2;
+    /// var2 = (((temp_adc / 131072) - (par_t1 / 8192)) * ((temp_adc / 131072) - (par_t1 / 8192))) * (par_t3 * 16);
+    /// t_fine = var1 + var2;
+    /// temp = t_fine / 5120.0
+    ///
+    fn cache_temperature_params(&mut self) {
+        let par_t1 = self.read_u16_le(0xE9);
+        let par_t2 = self.read_i16_le(0x8A);
         let par_t3 = self.read_i8(0x8C);
-
-        // From the Datasheet...
-        // var1 = ((temp_adc / 16384) - (par_t1 / 1024)) * par_t2;
-        // var2 = (((temp_adc / 131072) - (par_t1 / 8192)) * ((temp_adc / 131072) - (par_t1 / 8192))) * (par_t3 * 16);
-        // t_fine = var1 + var2;
-        // temp = t_fine / 5120.0
 
         // 16 = 2^4
         // 131072 = 2^17
@@ -178,23 +184,22 @@ impl Bme688 {
         self.par_ta = (a as f64) * denom;
         self.par_tb = (b as f64) * denom;
         self.par_tc = (c as f64) * denom;
-
-//        println!("Temp(C) = {:?} * adc^2 + {:?} * adc + {:?}", self.par_ta, self.par_tb, self.par_tc);
     }
 
 
-    pub fn cache_pressure_params(&mut self) {
-        let par_p4 = self.read_i16(0x94);
-        let par_p5 = self.read_i16(0x96);
+    ///
+    /// From the Datasheet...
+    /// temp = t_fine * 5120
+    /// var1 = (t_fine / 2) - 64000;
+    /// var1a = var1 * var1 * (par_p6 / 131072);
+    /// var1b = var1a + (var1 * par_p5 * 2);
+    /// var2 = (var1b / 4) + (par_p4 * 65536);
+    ///
+    fn cache_pressure_params2(&mut self) {
+        let par_p4 = self.read_i16_le(0x94);
+        let par_p5 = self.read_i16_le(0x96);
         let par_p6 = self.read_i8(0x99);
 
-        // From the Datasheet...
-        // temp = t_fine * 5120
-        // var1 = (t_fine / 2) - 64000;
-        // var1a = var1 * var1 * (par_p6 / 131072);
-        // var1b = var1a + (var1 * par_p5 * 2);
-        // var2 = (var1b / 4) + (par_p4 * 65536);
-        //
         // var2 = (var1b / 2^2) + (par_p4 * 2^16);
         // var2 = ((var1a + (var1 * par_p5 * 2)) / 2^2) + (par_p4 * 2^16);
         // var2 = (var1a / 2^2) + (var1 * par_p5 /2) + (par_p4 * 2^16);
@@ -238,17 +243,21 @@ impl Bme688 {
         self.par_pvar2c = (c as f64) * denom;
 
 //        println!("Pres var2 = {:?} * temp^2 + {:?} * temp + {:?}", self.par_pvar2a, self.par_pvar2b, self.par_pvar2c);
+    }
 
-        let par_p1 = self.read_u16(0x8E);
-        let par_p2 = self.read_i16(0x90);
+
+    ///
+    /// From the Datasheet...
+    /// t_fine = temp * 5120
+    /// var1 = (t_fine / 2) - 64000;
+    /// var1a = (((par_p3 * var1 * var1) / 16384) + (par_p2 * var1)) / 524288;
+    /// var1b = (1 + (var1a / 32768)) * par_p1;
+    ///
+    fn cache_pressure_params1(&mut self) {
+        let par_p1 = self.read_u16_le(0x8E);
+        let par_p2 = self.read_i16_le(0x90);
         let par_p3 = self.read_i8(0x92);
 
-        // From the Datasheet...
-        // t_fine = temp * 5120
-        // var1 = (t_fine / 2) - 64000;
-        // var1a = (((par_p3 * var1 * var1) / 16384) + (par_p2 * var1)) / 524288;
-        // var1b = (1 + (var1a / 32768)) * par_p1;
-        //
         // var1b = par_p1 * (1 + var1a / 2^15);
         // var1b = par_p1 * (1 + ((((par_p3 * var1 * var1) /2^14) + (par_p2 * var1)) / 2^19) /2^15))
         // var1b = par_p1 * (1 + (par_p3 * var1^2) / 2^48 + ((par_p2 * var1) / 2^34))
@@ -281,17 +290,22 @@ impl Bme688 {
         self.par_pvar1c = (c as f64) * denom;
 
 //        println!("Pres var1 = {:?} * temp^2 + {:?} * temp + {:?}", self.par_pvar1a, self.par_pvar1b, self.par_pvar1c);
+    }
+
+
+    ///
+    /// From the Datasheet...
+    /// var1 = (par_p9 * press_comp * press_comp) / 2147483648;
+    /// var2 = press_comp * (par_p8 / 32768);
+    /// var3 = (press_comp / 256) * (press_comp / 256) * (press_comp / 256) * (par_p10 / 131072);
+    /// press_comp = press_comp + (var1_p + var2_p + var3_p + (par_p7 * 128)) / 16;
+    ///
+    fn cache_pressure_params3(&mut self) {
 
         let par_p7 = self.read_i8(0x98);
-        let par_p8 = self.read_i16(0x9C);
-        let par_p9 = self.read_i16(0x9E);
+        let par_p8 = self.read_i16_le(0x9C);
+        let par_p9 = self.read_i16_le(0x9E);
         let par_p10 = self.read_i8(0xA0);
-
-        // From the Datasheet...
-        // var1 = (par_p9 * press_comp * press_comp) / 2147483648;
-        // var2 = press_comp * (par_p8 / 32768);
-        // var3 = (press_comp / 256) * (press_comp / 256) * (press_comp / 256) * (par_p10 / 131072);
-        // press_comp = press_comp + (var1_p + var2_p + var3_p + (par_p7 * 128)) / 16;
 
 
         // pressure = A * press_comp^3 + B * press_comp^2 + C * press_comp + D
@@ -326,7 +340,7 @@ impl Bme688 {
     }
 
 
-    pub fn cache_humditiy_params(&mut self) {
+    fn cache_humditiy_params(&mut self) {
 
         let tmp = self.read_u8(0xE2) as u16;
         let par_h1 = ((self.read_u8(0xE3) as u16) << 4) | (tmp & 0x0F);
@@ -361,10 +375,20 @@ impl Bme688 {
         // humd_comp = var2 + (par_h6 + (par_h7 * temp)) * var2 * var2);
     }
 
-    pub fn cache_gas_params(&mut self) {
+
+    ///
+    /// From the datasheet
+    /// var1 = (par_g1 / 16) + 49;
+    /// var2 = ((par_g2 / 32768) * 0.0005) + 0.00235;
+    /// var3 = par_g3 / 1024.0;
+    /// var4 = var1 * (1.0 + (var2 * target_temp));
+    /// var5 = var4 + (var3 * amb_temp);
+    /// res_heat_x = (uint8_t)(3.4 * ((var5 * (4 / (4 + res_heat_range)) * (1/(1 + (res_heat_val * 0.002)))) - 25
+    ///
+    fn cache_gas_params(&mut self) {
         let par_g1 = self.read_i8(0xED);
 
-        let par_g2 = self.read_i16(0xEB);
+        let par_g2 = self.read_i16_le(0xEB);
         let par_g3 = self.read_i8(0xEE);
 
         let heat_res_range = (self.read_u8(0x02) >> 4) & 0x03;
@@ -406,6 +430,17 @@ impl Bme688 {
         println!("par_g4 {:?}", par_g4);
     }
 
+
+    pub fn cache_params(&mut self) {
+        self.cache_temperature_params();
+        self.cache_pressure_params1();
+        self.cache_pressure_params2();
+        self.cache_pressure_params3();
+        self.cache_humditiy_params();
+        self.cache_gas_params();
+    }
+
+
     pub fn set_humdity_oversampling(&mut self, oversampling : u8) {
         self.hum_oversampling = calc_oversampling(oversampling).unwrap();
     }
@@ -421,31 +456,6 @@ impl Bme688 {
     }
 
     pub fn set_heater(&mut self, field:u8, temperature : u16) {
-        let par_g1 = self.read_i8(0xED);
-
-        let par_g2 = self.read_i16(0xEB);
-        let par_g3 = self.read_i8(0xEE);
-
-        let res_heat_range = (self.read_u8(0x02) >> 4) & 0x03;
-        let res_heat_val = self.read_i8(0x00);
-
-        // From the datasheet
-        // var1 = (par_g1 / 16) + 49;
-        // var2 = ((par_g2 / 32768) * 0.0005) + 0.00235;
-        // var3 = par_g3 / 1024.0;
-        // var4 = var1 * (1.0 + (var2 * target_temp));
-        // var5 = var4 + (var3 * amb_temp);
-        // res_heat_x = (uint8_t)(3.4 * ((var5 * (4 / (4 + res_heat_range)) * (1/(1 + (res_heat_val * 0.002)))) - 25))
-
-        let var1 = ((par_g1 as f64) / 16.0) + 49.0;
-        let var2 = ((par_g2 as f64) / 32768.0) * 0.0005 + 0.00235;
-        let var3 = (par_g3 as f64) / 1024.0;
-        let var4 = var1 * (1.0 + (var2 * (temperature as f64)));
-        let var5 = var4 + (var3 * self.temperature);
-        let res_heat_x = 3.4 * (var5 * (4.0 / (4.0 + (res_heat_range as f64))) * (1.0/(1.0 + ((res_heat_val as f64) * 0.002))) - 25.0);
-        let res_heat_x = res_heat_x as u32;
-
-        println!("res_heat_x {:?}", res_heat_x);
 
         let var4 = self.par_g1 * (1.0 + (self.par_g2 * (temperature as f64)));
         let var5 = var4 + (self.par_g3 * self.temperature);
@@ -486,12 +496,20 @@ impl Bme688 {
     fn read_humd_adc(&mut self, field :u8) -> u16 {
         let base : u8 = 0x25 + 0x11 * field;
         // Big-endian!
-        let msb = self.read_u8(base + 0x00) as u16;
-        let lsb = self.read_u8(base + 0x01) as u16;
-
-        let adc = (msb << 8) | lsb;
+        let adc = self.read_u16_be(base);
         println!("humd_adc {:?}", adc);
         adc
+    }
+
+
+    fn read_gas_adc(&mut self, field :u8) -> (u16, u8) {
+        let base : u8 = 0x2C + 0x11 * field;
+        let msb = self.read_u8(base);
+        let lsb = self.read_u8(base + 0x01);
+        let adc = ((msb as u16) << 2) | ((lsb as u16) >> 6);
+        let range = lsb & 0x0F;
+        println!("gas adc {:?}, range {:?}", adc, range);
+        (adc, range)
     }
 
 
@@ -511,6 +529,7 @@ impl Bme688 {
         temp
     }
 
+
     fn cache_press_temp_vars(&mut self) {
 
         let temp = self.temperature;
@@ -524,6 +543,7 @@ impl Bme688 {
         self.par_pvar1 = var1;
 //        println!("var1 = {:?}", self.par_pvar1);
     }
+
 
     fn cache_humd_temp_vars(&mut self) {
         let temp = self.temperature;
@@ -544,6 +564,7 @@ impl Bme688 {
         self.par_hvar4 = var4;
         self.par_hvar5 = var5;
     }
+
 
     pub fn read_press(&mut self, field: u8) -> f64 {
 
@@ -575,6 +596,13 @@ impl Bme688 {
     }
 
 
+    pub fn read_gas(&mut self, field: u8) -> f64 {
+        let (adc, range) = self.read_gas_adc(field);
+        let var1 = 262144_u32 >> range;
+        let var2 = 4096 + 3 * ((adc as i32) - 512);
+        let gas = (1000000.0 * (var1 as f64)) / (var2 as f64);
+        gas
+    }
 
     pub fn force(&mut self) {
         // Write Humdity oversampling
