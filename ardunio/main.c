@@ -2,7 +2,6 @@
 #include <util/delay.h>
 
 #define FOSC 16000000 // Clock Speed
-// #define FOSC 1843200 // Clock Speed
 #define BAUD 9600
 
 #define SERIAL_BUFFER_SIZE  (256)
@@ -70,37 +69,52 @@ void serial_writeln(char * str)
 */
 
 typedef struct {
-	unsigned long tens;
-	unsigned long value;
-	char buffer[20];
+	unsigned int tens;
+	unsigned int resolution;
+	unsigned int value;
+	char buffer[10];
 	int idx;
+	char leading_ch;
 } T_SpeedReporter;
 
 T_SpeedReporter Speed;
 
-void init_speed_reporter(void)
+void init_speed_reporter(unsigned int resolution)
 {
 	Speed.tens = 0;
+	Speed.resolution = resolution;
 }
 
 void run_speed_reporter(void)
 {
-	unsigned long tens = Speed.tens;
-	unsigned long value = Speed.value;
+	unsigned int tens = Speed.tens;
+	unsigned int value = Speed.value;
 
 	if (tens > 0) {
-		unsigned long digit = value / tens;
+		unsigned int digit = value / tens;
 		value -= digit * tens;
 		int idx = Speed.idx;
-		if (digit <= 9) {
-			Speed.buffer[idx] = digit + '0';
+		const int point = (tens == Speed.resolution);
+		if (point) {
+			Speed.leading_ch = '0';
+		}
+		if (digit == 0) {
+			Speed.buffer[idx] = Speed.leading_ch;
 		} else {
-			Speed.buffer[idx] = '?';
+			Speed.leading_ch = '0';
+			if (digit <= 9) {
+				Speed.buffer[idx] = digit + '0';
+			} else {
+				Speed.buffer[idx] = '?';
+			}
 		}
 		idx++;
+		if (point) {
+			Speed.buffer[idx++] = '.';
+		}
 		tens /= 10UL;
 		if (tens == 0) {
-			Speed.buffer[idx++] = '\r';
+			Speed.buffer[idx++] = '\n';
 			Speed.buffer[idx++] = '\0';
 			serial_writeln(Speed.buffer);
 		} else {
@@ -111,27 +125,73 @@ void run_speed_reporter(void)
 	}
 }
 
-void report_speed(unsigned long speed)
+void report_speed(unsigned int speed)
 {
-	unsigned long tens = Speed.tens;
+	unsigned int tens = Speed.tens;
 	if (tens == 0) {
 		Speed.value = speed;
 		Speed.idx = 0;
-		Speed.tens = 1000000000UL;
+		Speed.tens = 10000UL;
+		Speed.leading_ch = ' ';
 	}
 }
 
-int main(void) {
+unsigned long ticks_per_metre(unsigned char val, unsigned long * pOneSecond)
+{
+	TCCR1B = val;
+
+	unsigned long divider = 1;
+
+	switch(val) {
+		case 1: divider = 1; break;
+		case 2: divider = 8; break;
+		case 3: divider = 64; break;
+		case 4: divider = 256; break;
+		case 5: divider = 1024; break;
+	}
+	unsigned long one_second = FOSC / divider;
+	*pOneSecond = one_second;
+	// 1 tick = FOSC/ divider, 1.25 metre per count
+	return (one_second * 125) / 100;
+}
+
+
+unsigned long delta_time(void)
+{
+	static unsigned int prev_time = 0;
+
+	const unsigned int now_time = TCNT1;
+	const unsigned int delta = now_time - prev_time;
+	prev_time = now_time;
+	return delta;
+}
+
+
+int has_moved(void)
+{
+	static unsigned char prevData = 0;
+
+	int moved = 0;
+	const unsigned char data = PINB &_BV(PORTB5);
+	if (prevData != data) {
+		moved = 1;
+		prevData = data;
+	}
+	return moved;
+}
+
+
+int main(void)
+{
+	const unsigned int resolution = 10;
 
 	init_serial();
-	init_speed_reporter();
+	init_speed_reporter(resolution);
 
-	//Timer wraps every 1/3 of one second
-	TCCR1B = 3;  // 16MHz / 64 => 250000
+	unsigned long one_second;
+	const unsigned long step = resolution * ticks_per_metre(3, &one_second);
 
-	// 1 tick = 4ms, step 1.25/0.000004
-	unsigned long step = 31250000;
-
+	const unsigned long max_count = 0xFFFFFFFFUL - step;
 	// Some test code
 	// Set Port B as inputs
 	DDRB = 0; // _BV(DDB5);
@@ -139,10 +199,8 @@ int main(void) {
 	// Select pull up
 	PORTB |= _BV(PORTB5);
 
-	unsigned char prevData = PINB & _BV(PORTB5);
 	unsigned long count = 0;
 	unsigned long time = 0;
-	unsigned int prev_time = 0;
 
 	serial_writeln("Start\n");
 
@@ -152,49 +210,16 @@ int main(void) {
 
 		run_speed_reporter();
 
-		unsigned int now_time = TCNT1;
-		unsigned int delta = now_time - prev_time;
-		prev_time = now_time;
+		time += delta_time();
 
-		time += delta;
-
-		unsigned char data = PINB &_BV(PORTB5);
-		if (prevData != data) {
+		if (has_moved()) {
 			count += step;
-			prevData = data;
 		}
 
-		if ((count > 10 * step) || (time > 100000)) {
-			report_speed(count/time);
+		if ((count >= max_count) || (time > 2 * one_second)) {
+			report_speed((count + time/2)/time);
 			count = 0;
 			time = 0;
-		}
-	}
-
-	while(1) {
-		if ((count > 10) || (time > 10000)) {
-			{
-				unsigned int now_time = TCNT1;
-				unsigned int delta = now_time - prev_time;
-				prev_time = now_time;
-				count = 0;
-
-				unsigned long tens = 100000000UL;
-				unsigned int i = 1;
-				unsigned long temp = delta;
-				while(tens > 0) {
-					unsigned long digit = temp / tens;
-					temp -= digit * tens;
-					if (digit <= 9) {
-						serial_write(digit + '0');
-					} else {
-						serial_write('*');
-					}
-					i++;
-					tens /= 10UL;
-				}
-				serial_write('\r');
-			}
 		}
 	}
 }

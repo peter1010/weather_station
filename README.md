@@ -1,12 +1,23 @@
 # weather_station
 
-Weather station based on raspberry pi and perhaps later an arduino(s)
+Weather station based on raspberry pi(s) and an arduino(s)
 
 ## Indoor sensors
  - Temperaure
  - Humdity
  - Pressure
- - Gas
+ - Gas(?)
+
+## Outdoor sensors
+  - Wind
+  - Rain
+  - Solar?
+  - Temperature
+  - Humdity
+  - Pressure?
+
+
+# Indoor...
 
 Using BME688 module connected to Raspberry pi.
 
@@ -43,3 +54,14 @@ Add the following line.
 Note, the name was discovered by running the command *udevadmin info -a /dev/i2c-4*
 
 4. Build the rust project ....
+
+# Outdoor
+
+## Wind
+
+1. Create ardunio project to count pulses from aneometer
+
+2. Ardunio connect to pi via USB. Sends wind speeds in m/s
+
+3. Rust executable opens serial port, sets baud rate and reads speed measurements
+
