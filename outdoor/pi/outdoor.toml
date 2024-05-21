@@ -1,0 +1,4 @@
+[Wind]
+dev = '/dev/ttyUSB'
+
+[Temperature]
