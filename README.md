@@ -61,6 +61,11 @@ Note, the name was discovered by running the command *udevadmin info -a /dev/i2c
 
 1. Create ardunio project to count pulses from aneometer
 
+Command to load executable onto the Arduion is this:
+
+avrdude -c arduino -P /dev/ttyACM0 -b 115200 -p atmega328p -U flash:w:/home/xxxx/test.hex:i
+
+
 2. Ardunio connect to pi via USB. Sends wind speeds in m/s
 
 3. Rust executable opens serial port, sets baud rate and reads speed measurements
