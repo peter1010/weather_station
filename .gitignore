@@ -1,3 +1,5 @@
 objs
 .ninja_deps
 .ninja_log
+dist
+*.egg-info

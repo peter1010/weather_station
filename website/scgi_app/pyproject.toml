@@ -1,7 +1,18 @@
 [build-system]
 requires = [
-        "setuptools>=42",
-        "wheel"
+        "setuptools",
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "scgi_weather_app"
+dynamic = ["version"]
+authors = [
+  { name = "Peter1010", email = "peter1010@users.noreply.github.com" }
+]
+description = "Script to interface between lighttpd and db"
+classifiers = [
+	"Programming Language :: Python :: 3"
+]
+requires-python = ">=3.8"
 
