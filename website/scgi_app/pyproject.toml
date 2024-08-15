@@ -16,3 +16,5 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 
+[tool.setuptools.dynamic]
+version = {attr = "scgi_weather_app.VERSION"}

@@ -3,3 +3,4 @@ objs
 .ninja_log
 dist
 *.egg-info
+__pycache__
