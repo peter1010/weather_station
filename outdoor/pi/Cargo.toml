@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.37.0", features = ["fs", "io-util", "rt", "rt-multi-thread"] }
+tokio = { version = "1.37.0", features = ["fs", "io-util", "rt", "rt-multi-thread", "time"] }
 toml = "0.8.13"
+chrono = "0.4.38"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
