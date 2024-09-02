@@ -1,11 +1,45 @@
 # Web server part of weather station project
 
-
 Based on Lighttpd
 
-Uses mod_scgi to communicate with bespoke python app
+Uses mod_scgi to communicate with bespoke app
 
 App gets weather data from postgresql server
+
+# Creating a self-signed certificate for testing
+
+-- Create Root CA private Key --
+$ openssl genpkey -algorithm RSA -des3 -pkeyopt rsa_keygen_bits:2048 -out example_ca.key
+
+
+-- Create some Root CA info in a suitable config file --
+See example_ca.conf
+
+
+-- Create Root CA certificate from the private key in previous step --
+$ openssl req -x509 -new -key my_ca.key -sha256 -days 1000 -config example_ca.conf -out example_ca.pem
+
+
+-- Create Another private key --
+$ openssl genpkey -algorithm RSA -des3 -pkeyopt rsa_keygen_bits:2048 -out example_website.key
+Remove -des3 if password protection is not required
+
+-- Create some Website info in a suitable config file --
+See example_website.conf
+
+
+-- Create a CSR ...
+$ openssl req -new -key example_website.key -sha256 -config example_website.conf -out example_website.csr
+
+
+-- Create extend info for certificate ---
+See example_website_ext
+
+-- Sign it --
+
+openssl x509 -req -in example_website.csr -CA example_ca.pem -CAkey example_ca.key \
+-CAcreateserial -out example_website.crt -days 825 -sha256 -extfile example_website.ext
+
 
 # scgi_weather_app
 
@@ -18,70 +52,6 @@ python -m build
 To install
 
 pip install  ....
-
-# Creating a self-signed certificate for testing
-
--- Create Root CA private Key --
-$ openssl genpkey -algorithm RSA -des3 -pkeyopt rsa_keygen_bits:2048 -out my_ca.key
-
--- Create some Root CA info in a suitable config file --
-
-[req]
-distinguished_name = req_distinguished_name
-prompt = no
-[req_distinguished_name]
-C = UK
-ST = Wales
-L = Newtown
-O = MyCompany
-OU = MyDivision
-CN = MyCommonName
-
-
--- Create Root CA certificate from the private key in previous step --
-$ openssl req -x509 -new -key my_CA.key -sha256 -days 1000 -config ca_req.cnf -out my_CA.pem
-
-
--- Create Another private key --
-$ openssl genpkey -algorithm RSA -des3 -pkeyopt rsa_keygen_bits:2048 -out my_website.key
-
-
--- Create some Website info in a suitable config file --
-
-[req]
-distinguished_name = req_distinguished_name
-x509_extensions = v3_req
-prompt = no
-[req_distinguished_name]
-C = UK
-ST = Wales
-L = Newtown
-O = MyCompany
-OU = MyDivision
-CN = www.company.com
-
-
--- Create a CSR ...
-$ openssl req -new -key my_website.key -sha256 -config my_website.conf -out my_website.csr
-
--- Create extend info for certificate ---
-
-
-authorityKeyIdentifier = keyid,issuer
-basicConstraints = CA:FALSE
-keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
-subjectAltName = @alt_names
-[alt_names]
-DNS.1 = www.company.com
-DNS.2 = company.com
-DNS.3 = company.net
-
-
--- Sign it --
-
-openssl x509 -req -in website.csr -CA my_ca.pem -CAkey my_ca.key \
--CAcreateserial -out webiste.crt -days 825 -sha256 -extfile website.ext
-
 
 
 
