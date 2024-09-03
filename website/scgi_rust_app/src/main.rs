@@ -3,11 +3,14 @@ use std::ffi::CString;
 use std::fs::remove_file;
 use std::os::unix::fs::chown;
 use std::os::unix::net::UnixListener;
-use std::io::{BufReader, BufRead, Read};
+use std::io::{BufReader, BufRead, Read, Write};
+use std::collections::HashMap;
 
 const SOCK_NAME : &str = "/run/lighttpd/scgi_app";
-const SOCK_USER : &str = "http";
-const SOCK_GROUP : &str = "http";
+//const SOCK_USER : &str = "http";
+const SOCK_USER : &str = "lighttpd";
+//const SOCK_GROUP : &str = "http";
+const SOCK_GROUP : &str = "lighttpd";
 
 fn get_uid_and_gid(uid_name : &str, gid_name : &str) -> Option<(u32, u32)> {
     let cstr = CString::new(uid_name.as_bytes()).ok()?;
@@ -51,8 +54,8 @@ fn drop_privs(uid_name : &str, gid_name : &str) {
 }
 
 fn create_socket() -> UnixListener {
-    remove_file(SOCK_NAME);
-    
+    let _ = remove_file(SOCK_NAME);
+
     let server = UnixListener::bind(SOCK_NAME).unwrap();
     drop_privs(SOCK_USER, SOCK_GROUP);
     return server
@@ -63,33 +66,42 @@ fn main() {
     let server = create_socket();
 
     loop {
-        let (conn, addr) = server.accept().unwrap();
-   
-        let mut buffer = BufReader::new(conn);
+        let (conn, _addr) = server.accept().unwrap();
 
-        loop {
-            let mut hdr_length = vec![];
-            let num_bytes = buffer.read_until(b':', &mut hdr_length);
+        let mut reader = BufReader::new(conn);
 
-            let hdr_length : u32 = std::str::from_utf8(&hdr_length).unwrap().parse().unwrap();
+        let mut hdr_fields = HashMap::new();
 
-            let mut hdr = Vec::<u8>::with_capacity(hdr_length as usize);
-            buffer.read_exact(& mut hdr);
+        let mut hdr_length = vec![];
+        let _ = reader.read_until(b':', &mut hdr_length);
 
-         /* 
-            hdr_dict = {}
-            tokens = hdr.split(b'\0')
-            idx = 0;
-            end = 2 * (len(tokens) // 2)
-            while idx < end:
-                name = tokens[idx]
-                value = tokens[idx+1]
-                hdr_dict[name] = value
-                idx += 2
-            print(hdr_dict)
-            request = hdr_dict[b'REQUEST_URI'].decode("ascii")
-         */
+        // Drop the colon
+        hdr_length.pop();
+
+        let hdr_length : u32 = std::str::from_utf8(&hdr_length).unwrap().parse().unwrap();
+
+        let mut hdr = vec![0; hdr_length as usize];
+        let _ = reader.read_exact(& mut hdr);
+
+        let iter = hdr.split(|x| *x == b'\0');
+        let mut name = String::new();
+        let mut idx = 0;
+        for part in iter {
+            if idx == 0 {
+                name = std::str::from_utf8(&part).unwrap().to_string();
+                idx = 1;
+            } else {
+                let value = std::str::from_utf8(&part).unwrap().to_string();
+                idx = 0;
+                println!("{} => {}", name, value);
+                hdr_fields.insert(name.clone(), value);
+            }
         }
+        let mut writer = reader.into_inner();
+        writer.write_all(b"Status: 200 OK\r\n");
+        writer.write_all(b"Content-Type: text/plain\r\n");
+        writer.write_all(b"\r\n");
+        writer.write_all(b"Hello, world!\r\n");
+        println!("Done");
     }
-    println!("Hello, world!");
 }

@@ -4,3 +4,8 @@ objs
 dist
 *.egg-info
 __pycache__
+*.key
+*.pem
+*.crt
+*.csr
+*.srl
