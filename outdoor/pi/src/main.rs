@@ -6,14 +6,19 @@ use chrono;
 use chrono::{DateTime, Utc};
 use chrono::Timelike;
 use std::time::Duration;
+use sqlite;
+
+mod stats;
+
+const SAMPLE_PERIOD_IN_MINS : i32 = 15;
+const SAMPLE_PERIOD_IN_SECS : i32 = 60 * SAMPLE_PERIOD_IN_MINS;
 
 struct Wind {
-    max_speed : f32,
-    min_speed : f32,
-    sum : f64,
-    num_of : u16,
+    speed : stats::Accumulated,
     dev_name : String
 }
+
+
 
 impl Wind {
     fn init(&mut self, dev_name : &str) {
@@ -22,32 +27,18 @@ impl Wind {
     }
 
     fn reset(&mut self) {
-        self.num_of = 0;
+        self.speed.reset();
     }
+
 
     fn process(&mut self, speed : f32) {
-        if self.num_of > 0 {
-            if speed > self.max_speed {
-                self.max_speed = speed;
-            } else {
-                if speed < self.min_speed {
-                    self.min_speed = speed;
-                }
-            }
-            self.num_of += 1;
-            self.sum += speed as f64;
-        } else {
-            self.max_speed = speed;
-            self.min_speed = speed;
-            self.sum = speed as f64;
-            self.num_of = 1;
-        }
+        self.speed.add(speed);
     }
 
-    fn save(&mut self) {
-        let now = chrono::Utc::now();
-        println!("{} {} {} {}", now, self.max_speed, self.sum / (self.num_of as f64), self.min_speed);
-        self.num_of = 0;
+    fn sample(&mut self) -> stats::Summary {
+        let result = stats::Summary::new(&self.speed, SAMPLE_PERIOD_IN_SECS);
+        result.print();
+        result
     }
 
     async fn task(&mut self) -> io::Result<()> {
@@ -68,11 +59,8 @@ impl Wind {
 }
 
 static mut g_wind : Wind = Wind {
-            max_speed : 0.0,
-            min_speed : 0.0,
-            sum : 0.0,
-            num_of : 0,
-            dev_name : String::new()
+    dev_name : String::new(),
+    speed : stats::Accumulated::new()
 };
 
 
@@ -85,17 +73,10 @@ async fn clock() -> Result<(), ()> {
      let now = chrono::Utc::now();
      let min = now.minute();
      let sec = now.second();
-     let mut delay = 60 - sec;
-     if min < 15 {
-         delay += (15 - min) * 60;
-      } else if min < 30 {
-         delay += (30 - min) * 60;
-      } else if min < 45 {
-         delay += (45 - min) * 60;
-      } else {
-         delay += (60 - min) * 60;
-      }
-        println!("Duration {}", delay);
+
+     let secs = (now.second() + 60 * now.minute()) as i32;
+     let delay = (SAMPLE_PERIOD_IN_SECS - secs % SAMPLE_PERIOD_IN_SECS) as u32;
+     println!("Duration {}", delay);
      sleep(Duration::from_secs(delay.into())).await;
      Ok(())
 }
@@ -129,7 +110,7 @@ fn main() -> Result<(), ()> {
         rt.block_on(clock());
         println!("Tick");
         unsafe {
-            g_wind.save();
+            let _ = g_wind.sample();
         }
     }
 
