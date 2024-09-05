@@ -20,7 +20,7 @@ pub struct Summary {
 
 impl Summary {
     pub fn new(accum : &Accumulated, period_in_secs : i32) -> Summary {
-        let now = chrono::Utc::now();
+        let now = Utc::now();
         let secs : i32 = (now.second() + 60 * now.minute()) as i32;
         let mut secs_adj = secs % period_in_secs;
         if secs_adj > (period_in_secs/2) {
@@ -37,6 +37,12 @@ impl Summary {
     pub fn print(& self) {
         let dt = DateTime::from_timestamp(self.unix_time, 0).expect("invalid timestamp");
         println!("{} {} {} {}", dt, self.max_value, self.ave_value, self.min_value);
+    }
+
+
+    pub fn sql_insert_cmd(& self) -> String {
+        format!("INSERT INTO Outdoor VALUES ({},{},{},{});",
+            self.unix_time, self.max_value, self.ave_value, self.min_value)
     }
 }
 

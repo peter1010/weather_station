@@ -71,8 +71,6 @@ struct Clock {
 
 async fn clock() -> Result<(), ()> {
      let now = chrono::Utc::now();
-     let min = now.minute();
-     let sec = now.second();
 
      let secs = (now.second() + 60 * now.minute()) as i32;
      let delay = (SAMPLE_PERIOD_IN_SECS - secs % SAMPLE_PERIOD_IN_SECS) as u32;
@@ -90,6 +88,12 @@ fn main() -> Result<(), ()> {
     };
 
     let config: Table = config_str.parse().unwrap();
+
+    let db_connection = sqlite::open("outdoor.db").unwrap();
+
+    let query = "CREATE TABLE IF NOT EXISTS Outdoor (unix_time INT NOT NULL, max REAL, ave REAL, min REAL, PRIMARY KEY(unix_time));";
+
+    db_connection.execute(query).unwrap();
 
     let dev_name = config["Wind"]["dev"].as_str().unwrap();
 
@@ -109,9 +113,11 @@ fn main() -> Result<(), ()> {
     loop {
         rt.block_on(clock());
         println!("Tick");
-        unsafe {
-            let _ = g_wind.sample();
-        }
+        let measurement = unsafe {
+            g_wind.sample()
+        };
+        let query = measurement.sql_insert_cmd();
+        db_connection.execute(query).unwrap();
     }
 
     Ok(())
