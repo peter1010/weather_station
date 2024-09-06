@@ -36,9 +36,7 @@ impl Wind {
     }
 
     fn sample(&mut self) -> stats::Summary {
-        let result = stats::Summary::new(&self.speed, SAMPLE_PERIOD_IN_SECS);
-        result.print();
-        result
+        self.speed.sample(SAMPLE_PERIOD_IN_SECS)
     }
 
     async fn task(&mut self) -> io::Result<()> {
@@ -54,11 +52,10 @@ impl Wind {
                 Err(..) => ()
             };
         }
-        Ok(())
     }
 }
 
-static mut g_wind : Wind = Wind {
+static mut G_WIND : Wind = Wind {
     dev_name : String::new(),
     speed : stats::Accumulated::new()
 };
@@ -98,27 +95,26 @@ fn main() -> Result<(), ()> {
     let dev_name = config["Wind"]["dev"].as_str().unwrap();
 
     unsafe {
-        g_wind.init(dev_name);
+        G_WIND.init(dev_name);
     }
 
     println!("Hello, world!");
     dbg!(&config);
 
-    let mut rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
 
 
-    unsafe {
-        rt.spawn(g_wind.task());
-    }
+    let _ = unsafe {
+        rt.spawn(G_WIND.task())
+    };
+
     loop {
-        rt.block_on(clock());
+        rt.block_on(clock()).unwrap();
         println!("Tick");
         let measurement = unsafe {
-            g_wind.sample()
+            G_WIND.sample()
         };
         let query = measurement.sql_insert_cmd();
         db_connection.execute(query).unwrap();
     }
-
-    Ok(())
 }
