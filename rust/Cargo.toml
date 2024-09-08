@@ -7,4 +7,11 @@ version = "0.1.0"
 authors = ["Peter"]
 description = "Weather Station rust compoments"
 
+[workspace.dependencies]
+toml = "0.8.13"
+sqlite = "0.36.1"
+
+[profile.dev]
+codegen-units = 1
+opt-level = "z"
 

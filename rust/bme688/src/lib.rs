@@ -85,8 +85,8 @@ fn two_to_pow(exp : i8) -> f64 {
 
 impl Bme688 {
 
-    pub fn new() -> Result<Self,LinuxI2CError> {
-        let dev = LinuxI2CDevice::new("/dev/i2c-bme688", BME688_ADDR)?;
+    pub fn new(dev_name : &str) -> Result<Self,LinuxI2CError> {
+        let dev = LinuxI2CDevice::new(dev_name, BME688_ADDR)?;
 
         let this = Self {
             dev,
@@ -424,7 +424,7 @@ impl Bme688 {
         let base : u8 = 0x25 + 0x11 * field;
         // Big-endian!
         let adc = self.read_u16_be(base);
-        println!("humd_adc {:?}", adc);
+//        println!("humd_adc {:?}", adc);
         adc
     }
 

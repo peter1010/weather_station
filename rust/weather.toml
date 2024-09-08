@@ -1,0 +1,14 @@
+[indoor]
+dev = "/dev/i2c-bme688"
+database = "indoor.db"
+db_table = "Indoor"
+
+[outdoor]
+wind_dev = '/dev/ttyACM0'
+database = "outdoor.db"
+
+[Temperature]
+
+
+[Database]
+file = 'temp.db'
