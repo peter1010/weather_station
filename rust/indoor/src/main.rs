@@ -1,6 +1,6 @@
-use crate::bme688::Bme688;
+use bme688::Bme688;
 
-pub mod bme688;
+//pub mod bme688;
 
 fn main() {
 

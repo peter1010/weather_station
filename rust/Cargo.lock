@@ -46,6 +46,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoor"
+version = "0.1.0"
+dependencies = [
+ "bme688",
+ "i2cdev",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.158"
 source = "registry+https://github.com/rust-lang/crates.io-index"
