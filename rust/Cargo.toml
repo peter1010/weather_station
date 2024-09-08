@@ -1,0 +1,10 @@
+[workspace]
+members = ["bme688"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Peter"]
+description = "Weather Station rust compoments"
+
+

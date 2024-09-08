@@ -6,7 +6,6 @@ Weather station based on raspberry pi(s) and an arduino(s)
  - Temperaure
  - Humdity
  - Pressure
- - Gas(?)
 
 ## Outdoor sensors
   - Wind
