@@ -1,7 +1,6 @@
-//use chrono;
-use chrono::{DateTime, Utc};
-use chrono::Timelike;
+use chrono::DateTime;
 
+use crate::clock;
 
 pub struct Accumulated {
     max_value : f32,
@@ -19,18 +18,12 @@ pub struct Summary {
 
 
 impl Summary {
-    pub fn new(accum : &Accumulated, period_in_secs : i32) -> Summary {
-        let now = Utc::now();
-        let secs : i32 = (now.second() + 60 * now.minute()) as i32;
-        let mut secs_adj = secs % period_in_secs;
-        if secs_adj > (period_in_secs/2) {
-            secs_adj -= period_in_secs;
-        }
+    pub fn new(accum : &Accumulated, ticker : &clock::Clock) -> Summary {
         Summary {
             max_value : accum.max_value,
             min_value : accum.min_value,
             ave_value : (accum.sum / (accum.num_of as f64)) as f32,
-            unix_time : now.timestamp() - (secs_adj as i64)
+            unix_time : ticker.get_nearest_tick()
         }
     }
 
@@ -40,9 +33,9 @@ impl Summary {
     }
 
 
-    pub fn sql_insert_cmd(& self) -> String {
-        format!("INSERT INTO Outdoor VALUES ({},{},{},{});",
-            self.unix_time, self.max_value, self.ave_value, self.min_value)
+    pub fn sql_insert_cmd(& self, table : &str) -> String {
+        format!("INSERT INTO {} VALUES ({},{},{},{});",
+            table, self.unix_time, self.max_value, self.ave_value, self.min_value)
     }
 }
 
@@ -82,10 +75,43 @@ impl Accumulated {
         }
     }
 
-    pub fn sample(&mut self, period_in_secs : i32) -> Summary {
-        let result = Summary::new(&self, period_in_secs);
+    pub fn sample(&mut self, ticker : &clock::Clock) -> Summary {
+        let result = Summary::new(&self, ticker);
         result.print();
         self.num_of = 0;
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_relative_eq;
+
+    #[test]
+    fn check_accumulated_and_summary() {
+        let mut acc = Accumulated::new();
+        acc.add(20.4);
+        acc.add(10.6);
+        acc.add(5.6);
+        assert_eq!(acc.max_value, 20.4);
+        assert_eq!(acc.min_value, 5.6);
+        assert_eq!(acc.num_of, 3);
+        assert_relative_eq!(acc.sum, 20.4 + 10.6 + 5.6, max_relative = 0.01);
+
+        let summary = acc.sample(&clock::Clock::new(60*15));
+        assert_eq!(acc.num_of, 0);
+
+        assert_eq!(summary.max_value, 20.4);
+        assert_eq!(summary.min_value, 5.6);
+        assert_relative_eq!(summary.ave_value, (20.4 + 10.6 + 5.6) / 3.0, max_relative = 0.01);
+
+
+        acc.add(3.4);
+        acc.add(9.6);
+        assert_eq!(acc.max_value, 9.6);
+        assert_eq!(acc.min_value, 3.4);
+        assert_eq!(acc.num_of, 2);
+        assert_relative_eq!(acc.sum, 9.6 + 3.4, max_relative = 0.01);
     }
 }

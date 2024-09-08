@@ -2,13 +2,11 @@ use toml::Table;
 use tokio::fs::File;
 use tokio::io::{self, BufReader, AsyncBufReadExt};
 use tokio::time::sleep;
-use chrono;
-use chrono::{DateTime, Utc};
-use chrono::Timelike;
 use std::time::Duration;
 use sqlite;
 
 mod stats;
+mod clock;
 
 const SAMPLE_PERIOD_IN_MINS : i32 = 15;
 const SAMPLE_PERIOD_IN_SECS : i32 = 60 * SAMPLE_PERIOD_IN_MINS;
@@ -35,8 +33,8 @@ impl Wind {
         self.speed.add(speed);
     }
 
-    fn sample(&mut self) -> stats::Summary {
-        self.speed.sample(SAMPLE_PERIOD_IN_SECS)
+    fn sample(&mut self, ticker : &clock::Clock) -> stats::Summary {
+        self.speed.sample(&ticker)
     }
 
     async fn task(&mut self) -> io::Result<()> {
@@ -61,17 +59,8 @@ static mut G_WIND : Wind = Wind {
 };
 
 
-struct Clock {
-    end_time : DateTime<Utc>
-}
-
-
-async fn clock() -> Result<(), ()> {
-     let now = chrono::Utc::now();
-
-     let secs = (now.second() + 60 * now.minute()) as i32;
-     let delay = (SAMPLE_PERIOD_IN_SECS - secs % SAMPLE_PERIOD_IN_SECS) as u32;
-     println!("Duration {}", delay);
+async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
+     let delay = ticker.secs_to_next_tick();
      sleep(Duration::from_secs(delay.into())).await;
      Ok(())
 }
@@ -98,6 +87,8 @@ fn main() -> Result<(), ()> {
         G_WIND.init(dev_name);
     }
 
+    let ticker = clock::Clock::new(SAMPLE_PERIOD_IN_SECS);
+
     println!("Hello, world!");
     dbg!(&config);
 
@@ -109,12 +100,12 @@ fn main() -> Result<(), ()> {
     };
 
     loop {
-        rt.block_on(clock()).unwrap();
+        rt.block_on(wait_tick(&ticker)).unwrap();
         println!("Tick");
         let measurement = unsafe {
-            G_WIND.sample()
+            G_WIND.sample(&ticker)
         };
-        let query = measurement.sql_insert_cmd();
+        let query = measurement.sql_insert_cmd("outdoor");
         db_connection.execute(query).unwrap();
     }
 }
