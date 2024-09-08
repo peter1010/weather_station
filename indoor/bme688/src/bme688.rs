@@ -52,12 +52,6 @@ pub struct Bme688 {
 
     // Last measure temperature
     temperature : f64,
-
-    // Gas heater params
-    par_g1 : f64,
-    par_g2 : f64,
-    par_g3 : f64,
-    par_g4 : f64,
 }
 
 
@@ -106,7 +100,6 @@ impl Bme688 {
             par_h1 : 0, par_h2 : 0.0, par_h3 : 0.0, par_h4: 0.0, par_h5: 0.0, par_h6: 0.0, par_h7: 0.0,
             par_hvar3 : 0, par_hvar4 : 0.0, par_hvar5 : 0.0,
             temperature : 0.0,
-            par_g1 : 0.0, par_g2 : 0.0, par_g3 : 0.0, par_g4 : 0.0,
         };
         Ok(this)
     }
@@ -376,68 +369,12 @@ impl Bme688 {
     }
 
 
-    ///
-    /// From the datasheet
-    /// var1 = (par_g1 / 16) + 49;
-    /// var2 = ((par_g2 / 32768) * 0.0005) + 0.00235;
-    /// var3 = par_g3 / 1024.0;
-    /// var4 = var1 * (1.0 + (var2 * target_temp));
-    /// var5 = var4 + (var3 * amb_temp);
-    /// res_heat_x = (uint8_t)(3.4 * ((var5 * (4 / (4 + res_heat_range)) * (1/(1 + (res_heat_val * 0.002)))) - 25
-    ///
-    fn cache_gas_params(&mut self) {
-        let par_g1 = self.read_i8(0xED);
-
-        let par_g2 = self.read_i16_le(0xEB);
-        let par_g3 = self.read_i8(0xEE);
-
-        let heat_res_range = (self.read_u8(0x02) >> 4) & 0x03;
-        let res_heat_val = self.read_i8(0x00);
-
-        println!("par_g1 {:?}", par_g1);
-        println!("par_g2 {:?}", par_g2);
-        println!("par_g3 {:?}", par_g3);
-        println!("heat_res_range {:?}", heat_res_range);
-        println!("res_heat_val {:?}", res_heat_val);
-
-        // From the datasheet
-        // var1 = (par_g1 / 16) + 49;
-        // var2 = ((par_g2 / 32768) * 0.0005) + 0.00235;
-        // var3 = par_g3 / 1024.0;
-        // var4 = var1 * (1.0 + (var2 * target_temp));
-        // var5 = var4 + (var3 * amb_temp);
-        // res_heat_x = (uint8_t)(3.4 * ((var5 * (4 / (4 + res_heat_range)) * (1/(1 + (res_heat_val * 0.002)))) - 25
-
-        let par_g1 = (((par_g1 as i16) + (16 * 49)) as f64) * two_to_pow(-4);
-        let par_g2 = ((par_g2 as f64) * two_to_pow(-15)) * 0.0005 + 0.00235;
-        let par_g3 = (par_g3 as f64) * two_to_pow(-10);
-        let par_g4 =  (3.4 * 4.0) / ((1.0 + ((res_heat_val as f64) * 0.002)) * (4.0 + (heat_res_range as f64)));
-
-        self.par_g1 = par_g1;
-        self.par_g2 = par_g2;
-        self.par_g3 = par_g3;
-        self.par_g4 = par_g4;
-
-
-        // so becomes..
-        // var5 = (par_g1 * (1.0 + (par_g2 * target_temp))) + (par_g3 * amb_temp);
-        // res_heat_x = (uint8_t)(var5 * par_g4) - 25
-
-
-        println!("par_g1 {:?}", par_g1);
-        println!("par_g2 {:?}", par_g2);
-        println!("par_g3 {:?}", par_g3);
-        println!("par_g4 {:?}", par_g4);
-    }
-
-
     pub fn cache_params(&mut self) {
         self.cache_temperature_params();
         self.cache_pressure_params1();
         self.cache_pressure_params2();
         self.cache_pressure_params3();
         self.cache_humditiy_params();
-        self.cache_gas_params();
     }
 
 
@@ -455,16 +392,6 @@ impl Bme688 {
         self.pres_oversampling = calc_oversampling(oversampling).unwrap();
     }
 
-    pub fn set_heater(&mut self, field:u8, temperature : u16) {
-
-        let var4 = self.par_g1 * (1.0 + (self.par_g2 * (temperature as f64)));
-        let var5 = var4 + (self.par_g3 * self.temperature);
-        let res_heat_x = var5 * self.par_g4;
-        let res_heat_x = (res_heat_x as u32) - 85;
-
-        println!("res_heat_x {:?}", res_heat_x);
- 
-    }
 
 
     fn read_temp_adc(&mut self, field :u8) -> i32 {
@@ -499,17 +426,6 @@ impl Bme688 {
         let adc = self.read_u16_be(base);
         println!("humd_adc {:?}", adc);
         adc
-    }
-
-
-    fn read_gas_adc(&mut self, field :u8) -> (u16, u8) {
-        let base : u8 = 0x2C + 0x11 * field;
-        let msb = self.read_u8(base);
-        let lsb = self.read_u8(base + 0x01);
-        let adc = ((msb as u16) << 2) | ((lsb as u16) >> 6);
-        let range = lsb & 0x0F;
-        println!("gas adc {:?}, range {:?}", adc, range);
-        (adc, range)
     }
 
 
@@ -596,13 +512,6 @@ impl Bme688 {
     }
 
 
-    pub fn read_gas(&mut self, field: u8) -> f64 {
-        let (adc, range) = self.read_gas_adc(field);
-        let var1 = 262144_u32 >> range;
-        let var2 = 4096 + 3 * ((adc as i32) - 512);
-        let gas = (1000000.0 * (var1 as f64)) / (var2 as f64);
-        gas
-    }
 
     pub fn force(&mut self) {
         // Write Humdity oversampling

@@ -17,6 +17,4 @@ fn main() {
     let temp = drv.read_temp(0);
     let temp = drv.read_press(0);
     let temp = drv.read_humd(0);
-
-    drv.set_heater(0, 100);
 }
