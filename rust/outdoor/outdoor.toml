@@ -1,8 +1,0 @@
-[Wind]
-dev = '/dev/ttyACM0'
-
-[Temperature]
-
-
-[Database]
-file = 'temp.db'

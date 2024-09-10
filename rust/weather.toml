@@ -7,8 +7,4 @@ db_table = "Indoor"
 wind_dev = '/dev/ttyACM0'
 database = "outdoor.db"
 
-[Temperature]
 
-
-[Database]
-file = 'temp.db'

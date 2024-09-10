@@ -1,5 +1,5 @@
 [workspace]
-members = ["bme688", "indoor"]
+members = ["bme688", "indoor", "outdoor"]
 resolver = "2"
 
 [workspace.package]

@@ -67,7 +67,7 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 
 
 fn main() -> Result<(), ()> {
-    let path = std::path::Path::new("outdoor.toml");
+    let path = std::path::Path::new("weather.toml");
     let config_str = match std::fs::read_to_string(path) {
         Ok(f) => f,
         Err(e) => panic!("Failed to read config file {}", e)
@@ -81,7 +81,7 @@ fn main() -> Result<(), ()> {
 
     db_connection.execute(query).unwrap();
 
-    let dev_name = config["Wind"]["dev"].as_str().unwrap();
+    let dev_name = config["outdoor"]["wind_dev"].as_str().unwrap();
 
     unsafe {
         G_WIND.init(dev_name);
