@@ -74,14 +74,20 @@ fn main() -> Result<(), ()> {
     };
 
     let config: Table = config_str.parse().unwrap();
+//    dbg!(&config);
 
-    let db_connection = sqlite::open("outdoor.db").unwrap();
+    let db_file = config["outdoor"]["database"].as_str().unwrap();
+    println!("Opening database {}", db_file);
+    let db_connection = sqlite::open(db_file).unwrap();
 
-    let query = "CREATE TABLE IF NOT EXISTS Outdoor (unix_time INT NOT NULL, max REAL, ave REAL, min REAL, PRIMARY KEY(unix_time));";
+    let db_table = config["outdoor"]["db_table"].as_str().unwrap();
+    println!("Creating/using db table {}", db_table);
 
+    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, max REAL, ave REAL, min REAL, PRIMARY KEY(unix_time));", db_table);
     db_connection.execute(query).unwrap();
 
     let dev_name = config["outdoor"]["wind_dev"].as_str().unwrap();
+    println!("Reading from {} for wind speeds", dev_name);
 
     unsafe {
         G_WIND.init(dev_name);
@@ -89,11 +95,7 @@ fn main() -> Result<(), ()> {
 
     let ticker = clock::Clock::new(SAMPLE_PERIOD_IN_SECS);
 
-    println!("Hello, world!");
-    dbg!(&config);
-
     let rt = tokio::runtime::Runtime::new().unwrap();
-
 
     let _ = unsafe {
         rt.spawn(G_WIND.task())
