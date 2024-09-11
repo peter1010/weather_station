@@ -59,7 +59,12 @@ fn main() {
         println!("Tick");
 
         let temp = sensor.read_temp(0);
-        let temp = sensor.read_press(0);
-        let temp = sensor.read_humd(0);
+        let press = sensor.read_press(0);
+        let humd = sensor.read_humd(0);
+        let unix_time = ticker.get_nearest_tick();
+
+        let query = format!("INSERT INTO {} VALUES ({},{},{},{});", db_table, unix_time, temp, humd, press);
+
+        db_connection.execute(query).unwrap();
     }
 }
