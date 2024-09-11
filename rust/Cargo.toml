@@ -1,5 +1,5 @@
 [workspace]
-members = ["bme688", "indoor", "outdoor"]
+members = ["bme688", "indoor", "outdoor", "clock"]
 resolver = "2"
 
 [workspace.package]
@@ -10,6 +10,7 @@ description = "Weather Station rust compoments"
 [workspace.dependencies]
 toml = "0.8.13"
 sqlite = "0.36.1"
+chrono = "0.4.38"
 
 [profile.dev]
 codegen-units = 1

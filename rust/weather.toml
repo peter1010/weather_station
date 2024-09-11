@@ -1,3 +1,6 @@
+[common]
+sample_period_in_mins = 15
+
 [indoor]
 dev = "/dev/i2c-bme688"
 database = "indoor.db"

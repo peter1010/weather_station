@@ -83,6 +83,4 @@ mod tests {
             assert_eq!(delay, delay_to_hour)
         }
     }
-
-
 }

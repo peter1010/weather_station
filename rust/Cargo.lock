@@ -129,6 +129,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "clock"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -202,8 +209,10 @@ name = "indoor"
 version = "0.1.0"
 dependencies = [
  "bme688",
+ "clock",
  "i2cdev",
  "sqlite",
+ "tokio",
  "toml",
 ]
 
@@ -284,6 +293,7 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "chrono",
+ "clock",
  "sqlite",
  "tokio",
  "toml",

@@ -4,9 +4,9 @@ use tokio::io::{self, BufReader, AsyncBufReadExt};
 use tokio::time::sleep;
 use std::time::Duration;
 use sqlite;
+use clock;
 
 mod stats;
-mod clock;
 
 const SAMPLE_PERIOD_IN_MINS : i32 = 15;
 const SAMPLE_PERIOD_IN_SECS : i32 = 60 * SAMPLE_PERIOD_IN_MINS;
