@@ -74,11 +74,11 @@ mod tests {
         let delay = ticker.secs_to_next_tick();
 
         if now.minute() < 15 {
-            assert_eq!(delay, delay_to_hour - 45)
+            assert_eq!(delay, delay_to_hour - 60 * 45)
         } else if now.minute() < 30 {
-            assert_eq!(delay, delay_to_hour - 30)
+            assert_eq!(delay, delay_to_hour - 60 * 30)
         } else if now.minute() < 45 {
-            assert_eq!(delay, delay_to_hour - 15)
+            assert_eq!(delay, delay_to_hour - 60 * 15)
         } else {
             assert_eq!(delay, delay_to_hour)
         }
