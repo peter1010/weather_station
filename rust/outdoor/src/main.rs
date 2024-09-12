@@ -1,57 +1,13 @@
 use toml::Table;
-use tokio::fs::File;
-use tokio::io::{self, BufReader, AsyncBufReadExt};
 use tokio::time::sleep;
 use std::time::Duration;
 use sqlite;
 use clock;
 
+use crate::wind::Wind;
+
 mod stats;
-
-const SAMPLE_PERIOD_IN_MINS : i32 = 15;
-const SAMPLE_PERIOD_IN_SECS : i32 = 60 * SAMPLE_PERIOD_IN_MINS;
-
-struct Wind {
-    speed : stats::Accumulated,
-    dev_name : String
-}
-
-
-
-impl Wind {
-    fn init(&mut self, dev_name : &str) {
-        self.dev_name = dev_name.to_string();
-        self.reset();
-    }
-
-    fn reset(&mut self) {
-        self.speed.reset();
-    }
-
-
-    fn process(&mut self, speed : f32) {
-        self.speed.add(speed);
-    }
-
-    fn sample(&mut self, ticker : &clock::Clock) -> stats::Summary {
-        self.speed.sample(&ticker)
-    }
-
-    async fn task(&mut self) -> io::Result<()> {
-        let f = File::open(&self.dev_name).await?;
-        let mut reader = BufReader::new(f);
-
-        loop {
-            let mut buffer = String::new();
-            reader.read_line(&mut buffer).await?;
-
-            match buffer.trim().parse::<f32>() {
-                Ok(value) => self.process(value),
-                Err(..) => ()
-            };
-        }
-    }
-}
+mod wind;
 
 static mut G_WIND : Wind = Wind {
     dev_name : String::new(),
@@ -93,7 +49,8 @@ fn main() -> Result<(), ()> {
         G_WIND.init(dev_name);
     }
 
-    let ticker = clock::Clock::new(SAMPLE_PERIOD_IN_SECS);
+    let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
+    let ticker = clock::Clock::new(period * 60);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
