@@ -47,7 +47,6 @@ fn main() {
     sensor.set_pressure_oversampling(16);
     sensor.set_temperature_oversampling(16);
 
-    sensor.force();
 
     let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
     let ticker = clock::Clock::new(period * 60);
@@ -57,6 +56,8 @@ fn main() {
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();
         println!("Tick");
+
+        sensor.force();
 
         let temp = sensor.read_temp(0);
         let press = sensor.read_press(0);
