@@ -1,13 +1,73 @@
 use toml::Table;
+use tokio::net::TcpListener;
 use tokio::time::sleep;
 use std::time::Duration;
-use sqlite;
+use sqlite:: Connection;
 use clock;
+use tokio::io::{self,AsyncReadExt,AsyncWriteExt};
 
 use crate::wind::Wind;
 
 mod stats;
 mod wind;
+
+struct Listener {
+    port : u16,
+    db_connection : Option<Connection>
+}
+
+impl Listener {
+
+    pub fn attach_db(&mut self, db_file : &str) {
+        self.db_connection = Some(sqlite::open(db_file).unwrap());
+    }
+
+    pub async fn task(&mut self) -> io::Result<()> {
+
+        let sock_addr = "0.0.0.0:8080";
+
+        // Next up we create a TCP listener which will listen for incoming
+        // connections. This TCP listener is bound to the address we determined
+        // above and must be associated with an event loop.
+        let listener = TcpListener::bind(&sock_addr).await?;
+        println!("Listening on: {}", sock_addr);
+
+        loop {
+            // Asynchronously wait for an inbound socket.
+            let (mut socket, _) = listener.accept().await?;
+
+            let mut buf = vec![0; 1024];
+
+            // In a loop, read data from the socket and write the data back.
+            loop {
+                let n = socket
+                    .read(&mut buf)
+                    .await
+                    .expect("failed to read data from socket");
+
+                if n == 0 {
+                    break;
+                }
+
+                let query = "select * from Outdoor where unix_time > 1726258500;";
+
+                println!("Rcv'd {:?}", buf);
+                socket
+                    .write_all(&buf[0..n])
+                    .await
+                    .expect("failed to write data to socket");
+            }
+        }
+        Ok(())
+    }
+}
+
+
+static mut G_LISTENER : Listener = Listener {
+    port : 8080,
+    db_connection : None
+};
+
 
 static mut G_WIND : Wind = Wind {
     dev_name : String::new(),
@@ -56,6 +116,14 @@ fn main() -> Result<(), ()> {
 
     let _ = unsafe {
         rt.spawn(G_WIND.task())
+    };
+
+    unsafe {
+        G_LISTENER.attach_db(db_file);
+    };
+
+    let _ = unsafe {
+        rt.spawn(G_LISTENER.task())
     };
 
     loop {
