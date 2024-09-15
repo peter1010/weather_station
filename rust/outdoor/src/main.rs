@@ -4,7 +4,7 @@ use tokio::time::sleep;
 use std::time::Duration;
 use sqlite:: Connection;
 use clock;
-use tokio::io::{self,AsyncReadExt,AsyncWriteExt};
+use tokio::io::{self,AsyncBufReadExt,AsyncWriteExt, BufReader};
 
 use crate::wind::Wind;
 
@@ -32,16 +32,21 @@ impl Listener {
         let listener = TcpListener::bind(&sock_addr).await?;
         println!("Listening on: {}", sock_addr);
 
+        let db_connection = self.db_connection.as_mut().unwrap();
+
         loop {
             // Asynchronously wait for an inbound socket.
-            let (mut socket, _) = listener.accept().await?;
+            let (socket, _) = listener.accept().await?;
 
-            let mut buf = vec![0; 1024];
+            let mut stream = BufReader::new(socket);
+
 
             // In a loop, read data from the socket and write the data back.
             loop {
-                let n = socket
-                    .read(&mut buf)
+                let mut line = String::new();
+
+                let n = stream
+                    .read_line(&mut line)
                     .await
                     .expect("failed to read data from socket");
 
@@ -49,12 +54,33 @@ impl Listener {
                     break;
                 }
 
-                let query = "select * from Outdoor where unix_time > 1726258500;";
+                let unix_time = line.trim().parse::<i64>();
+                if !unix_time.is_ok() {
+                    continue;
+                }
+                let unix_time = unix_time.unwrap();
 
-                println!("Rcv'd {:?}", buf);
-                socket
-                    .write_all(&buf[0..n])
-                    .await
+                println!("Rcv'd {:?}", unix_time);
+
+                let query = format!("select * from Outdoor where unix_time > {};", unix_time);
+
+                let statement = db_connection.prepare(query).unwrap();
+
+                // unix_time INT, max REAL, ave REAL, min REAL
+
+                let mut response = String::new();
+
+                for row in statement
+                    .into_iter()
+                    .map(|row| row.unwrap())
+                {
+                    response += &(format!("unix_time = {}", row.read::<i64, _>("unix_time")) + "\n");
+                    response += &(format!("\tmax = {}", row.read::<f64, _>("max")) + "\n");
+                    response += &(format!("\tave = {}", row.read::<f64, _>("ave")) + "\n");
+                    response += &(format!("\tmin = {}", row.read::<f64, _>("min")) + "\n");
+                }
+
+                stream.write_all(response.as_bytes()).await
                     .expect("failed to write data to socket");
             }
         }
