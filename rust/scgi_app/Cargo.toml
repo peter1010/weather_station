@@ -2,7 +2,8 @@
 name = "scgi_app"
 version = "0.1.0"
 edition = "2021"
-description = "SCGI based APP"
 
 [dependencies]
 libc = "0.2"
+toml = { workspace = true }
+sqlite = { workspace = true }
