@@ -1,36 +1,45 @@
 use tokio::fs::File;
 use tokio::io::{self, BufReader, AsyncBufReadExt};
 use clock;
-
 use crate::stats;
-
+use std::sync::Mutex;
 
 pub struct Wind {
-    pub speed : stats::Accumulated,
+    pub speed : Mutex<stats::Accumulated>,
     pub dev_name : String
 }
 
 
 impl Wind {
+    pub fn new(dev_name : &str) -> Wind {
+        Wind {
+            dev_name : dev_name.to_string(),
+            speed : Mutex::new(stats::Accumulated::new())
+        }
+    }
+
     pub fn init(&mut self, dev_name : &str) {
         self.dev_name = dev_name.to_string();
         self.reset();
     }
 
-    fn reset(&mut self) {
-        self.speed.reset();
+    fn reset(&self) {
+        let mut data = self.speed.lock().unwrap();
+        (*data).reset();
     }
 
 
-    fn process(&mut self, speed : f32) {
-        self.speed.add(speed);
+    fn process(&self, speed : f32) {
+        let mut data = self.speed.lock().unwrap();
+        (*data).add(speed);
     }
 
-    pub fn sample(&mut self, ticker : &clock::Clock) -> stats::Summary {
-        self.speed.sample(&ticker)
+    pub fn sample(&self, ticker : &clock::Clock) -> stats::Summary {
+        let mut data = self.speed.lock().unwrap();
+        (*data).sample(&ticker)
     }
 
-    pub async fn task(&mut self) -> io::Result<()> {
+    pub async fn task(&self) -> io::Result<()> {
         let f = File::open(&self.dev_name).await?;
         let mut reader = BufReader::new(f);
 

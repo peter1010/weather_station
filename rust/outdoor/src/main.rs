@@ -5,6 +5,7 @@ use std::time::Duration;
 use sqlite:: Connection;
 use clock;
 use tokio::io::{self,AsyncBufReadExt,AsyncWriteExt, BufReader};
+use std::sync::Mutex;
 
 use crate::wind::Wind;
 
@@ -97,7 +98,7 @@ static mut G_LISTENER : Listener = Listener {
 
 static mut G_WIND : Wind = Wind {
     dev_name : String::new(),
-    speed : stats::Accumulated::new()
+    speed : Mutex::new(stats::Accumulated::new())
 };
 
 
@@ -106,7 +107,6 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
      sleep(Duration::from_secs(delay.into())).await;
      Ok(())
 }
-
 
 fn main() -> Result<(), ()> {
     let path = std::path::Path::new("weather.toml");
