@@ -3,9 +3,10 @@ use tokio::net::TcpListener;
 use tokio::time::sleep;
 use std::time::Duration;
 use sqlite:: Connection;
-use clock;
 use tokio::io::{self,AsyncBufReadExt,AsyncWriteExt, BufReader};
-use std::sync::Mutex;
+use std::sync::Arc;
+
+use clock;
 
 use crate::wind::Wind;
 
@@ -85,7 +86,6 @@ impl Listener {
                     .expect("failed to write data to socket");
             }
         }
-        Ok(())
     }
 }
 
@@ -96,17 +96,12 @@ static mut G_LISTENER : Listener = Listener {
 };
 
 
-static mut G_WIND : Wind = Wind {
-    dev_name : String::new(),
-    speed : Mutex::new(stats::Accumulated::new())
-};
-
-
 async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
      let delay = ticker.secs_to_next_tick();
      sleep(Duration::from_secs(delay.into())).await;
      Ok(())
 }
+
 
 fn main() -> Result<(), ()> {
     let path = std::path::Path::new("weather.toml");
@@ -131,18 +126,16 @@ fn main() -> Result<(), ()> {
     let dev_name = config["outdoor"]["wind_dev"].as_str().unwrap();
     println!("Reading from {} for wind speeds", dev_name);
 
-    unsafe {
-        G_WIND.init(dev_name);
-    }
+    let wind = Arc::new(Wind::new(dev_name));
 
     let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
     let ticker = clock::Clock::new(period * 60);
 
     let rt = tokio::runtime::Runtime::new().unwrap();
 
-    let _ = unsafe {
-        rt.spawn(G_WIND.task())
-    };
+    let task_data = wind.clone();
+
+    rt.spawn(async move { task_data.task().await });
 
     unsafe {
         G_LISTENER.attach_db(db_file);
@@ -155,9 +148,7 @@ fn main() -> Result<(), ()> {
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();
         println!("Tick");
-        let measurement = unsafe {
-            G_WIND.sample(&ticker)
-        };
+        let measurement = wind.sample(&ticker);
         let query = measurement.sql_insert_cmd("outdoor");
         db_connection.execute(query).unwrap();
     }

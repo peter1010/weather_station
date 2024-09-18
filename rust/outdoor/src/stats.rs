@@ -51,9 +51,6 @@ impl Accumulated {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.num_of = 0;
-    }
 
     pub fn add(&mut self, value : f32) {
         if self.num_of > 0 {

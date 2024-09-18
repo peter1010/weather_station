@@ -18,26 +18,18 @@ impl Wind {
         }
     }
 
-    pub fn init(&mut self, dev_name : &str) {
-        self.dev_name = dev_name.to_string();
-        self.reset();
-    }
-
-    fn reset(&self) {
-        let mut data = self.speed.lock().unwrap();
-        (*data).reset();
-    }
-
 
     fn process(&self, speed : f32) {
         let mut data = self.speed.lock().unwrap();
         (*data).add(speed);
     }
 
+
     pub fn sample(&self, ticker : &clock::Clock) -> stats::Summary {
         let mut data = self.speed.lock().unwrap();
         (*data).sample(&ticker)
     }
+
 
     pub async fn task(&self) -> io::Result<()> {
         let f = File::open(&self.dev_name).await?;
