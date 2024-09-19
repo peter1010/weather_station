@@ -4,7 +4,7 @@ use tokio::time::sleep;
 use std::time::Duration;
 use sqlite:: Connection;
 use tokio::io::{self,AsyncBufReadExt,AsyncWriteExt, BufReader};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use clock;
 
@@ -15,13 +15,13 @@ mod wind;
 
 struct Listener {
     port : u16,
-    db_connection : Option<Connection>
+    db_connection : Option<Arc<Mutex<Connection>>>
 }
 
 impl Listener {
 
-    pub fn attach_db(&mut self, db_file : &str) {
-        self.db_connection = Some(sqlite::open(db_file).unwrap());
+    pub fn attach_db(&mut self, db_connection : Arc<Mutex<Connection>> ) {
+        self.db_connection = Some(db_connection);
     }
 
     pub async fn task(&mut self) -> io::Result<()> {
@@ -64,22 +64,26 @@ impl Listener {
 
                 println!("Rcv'd {:?}", unix_time);
 
-                let query = format!("select * from Outdoor where unix_time > {};", unix_time);
-
-                let statement = db_connection.prepare(query).unwrap();
-
-                // unix_time INT, max REAL, ave REAL, min REAL
-
                 let mut response = String::new();
 
-                for row in statement
-                    .into_iter()
-                    .map(|row| row.unwrap())
+                let query = format!("select * from Outdoor where unix_time > {};", unix_time);
                 {
-                    response += &(format!("unix_time = {}", row.read::<i64, _>("unix_time")) + "\n");
-                    response += &(format!("\tmax = {}", row.read::<f64, _>("max")) + "\n");
-                    response += &(format!("\tave = {}", row.read::<f64, _>("ave")) + "\n");
-                    response += &(format!("\tmin = {}", row.read::<f64, _>("min")) + "\n");
+                    let conn = db_connection.lock().unwrap();
+
+                    let statement = (*conn).prepare(query).unwrap();
+
+                    // unix_time INT, max REAL, ave REAL, min REAL
+
+
+                    for row in statement
+                        .into_iter()
+                        .map(|row| row.unwrap())
+                    {
+                        response += &(format!("unix_time = {}", row.read::<i64, _>("unix_time")) + "\n");
+                        response += &(format!("\tmax = {}", row.read::<f64, _>("max")) + "\n");
+                        response += &(format!("\tave = {}", row.read::<f64, _>("ave")) + "\n");
+                        response += &(format!("\tmin = {}", row.read::<f64, _>("min")) + "\n");
+                    }
                 }
 
                 stream.write_all(response.as_bytes()).await
@@ -115,13 +119,16 @@ fn main() -> Result<(), ()> {
 
     let db_file = config["outdoor"]["database"].as_str().unwrap();
     println!("Opening database {}", db_file);
-    let db_connection = sqlite::open(db_file).unwrap();
+    let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
 
     let db_table = config["outdoor"]["db_table"].as_str().unwrap();
     println!("Creating/using db table {}", db_table);
 
     let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, max REAL, ave REAL, min REAL, PRIMARY KEY(unix_time));", db_table);
-    db_connection.execute(query).unwrap();
+    {
+        let conn = db_connection.lock().unwrap();
+        (*conn).execute(query).unwrap();
+    }
 
     let dev_name = config["outdoor"]["wind_dev"].as_str().unwrap();
     println!("Reading from {} for wind speeds", dev_name);
@@ -138,7 +145,7 @@ fn main() -> Result<(), ()> {
     rt.spawn(async move { task_data.task().await });
 
     unsafe {
-        G_LISTENER.attach_db(db_file);
+        G_LISTENER.attach_db(db_connection.clone());
     };
 
     let _ = unsafe {
@@ -150,6 +157,9 @@ fn main() -> Result<(), ()> {
         println!("Tick");
         let measurement = wind.sample(&ticker);
         let query = measurement.sql_insert_cmd("outdoor");
-        db_connection.execute(query).unwrap();
+        {
+            let conn = db_connection.lock().unwrap();
+            (*conn).execute(query).unwrap();
+        }
     }
 }
