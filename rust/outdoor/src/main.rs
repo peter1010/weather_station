@@ -1,3 +1,7 @@
+//!
+//! Reading of Outdoor sensors
+//!
+
 use toml::Table;
 use tokio::net::TcpListener;
 use tokio::time::sleep;
@@ -15,26 +19,28 @@ mod wind;
 
 struct Listener {
     port : u16,
-    db_connection : Option<Arc<Mutex<Connection>>>
+    db_connection : Arc<Mutex<Connection>>
 }
 
 impl Listener {
 
-    pub fn attach_db(&mut self, db_connection : Arc<Mutex<Connection>> ) {
-        self.db_connection = Some(db_connection);
+    pub fn new(port :u16, db_connection : Arc<Mutex<Connection>>) -> Listener {
+        Listener {
+            port,
+            db_connection
+        }
     }
+
 
     pub async fn task(&mut self) -> io::Result<()> {
 
-        let sock_addr = "0.0.0.0:8080";
+        let sock_addr = format!("0.0.0.0:{}", self.port);
 
         // Next up we create a TCP listener which will listen for incoming
         // connections. This TCP listener is bound to the address we determined
         // above and must be associated with an event loop.
         let listener = TcpListener::bind(&sock_addr).await?;
         println!("Listening on: {}", sock_addr);
-
-        let db_connection = self.db_connection.as_mut().unwrap();
 
         loop {
             // Asynchronously wait for an inbound socket.
@@ -68,7 +74,7 @@ impl Listener {
 
                 let query = format!("select * from Outdoor where unix_time > {};", unix_time);
                 {
-                    let conn = db_connection.lock().unwrap();
+                    let conn = self.db_connection.lock().unwrap();
 
                     let statement = (*conn).prepare(query).unwrap();
 
@@ -94,11 +100,6 @@ impl Listener {
 }
 
 
-static mut G_LISTENER : Listener = Listener {
-    port : 8080,
-    db_connection : None
-};
-
 
 async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
      let delay = ticker.secs_to_next_tick();
@@ -106,7 +107,7 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
      Ok(())
 }
 
-
+/// Application entry point
 fn main() -> Result<(), ()> {
     let path = std::path::Path::new("weather.toml");
     let config_str = match std::fs::read_to_string(path) {
@@ -144,13 +145,11 @@ fn main() -> Result<(), ()> {
 
     rt.spawn(async move { task_data.task().await });
 
-    unsafe {
-        G_LISTENER.attach_db(db_connection.clone());
-    };
+    let port = config["common"]["port"].as_integer().unwrap() as u16;
+    let mut listener = Listener::new(port, db_connection.clone());
 
-    let _ = unsafe {
-        rt.spawn(G_LISTENER.task())
-    };
+    rt.spawn(async move { listener.task().await });
+
 
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();
