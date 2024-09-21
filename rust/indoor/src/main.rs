@@ -1,16 +1,29 @@
 use toml::Table;
-use bme688::Bme688;
-use sqlite;
-use clock;
-use tokio;
+use tokio::runtime::Runtime;
 use tokio::time::sleep;
 use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use sqlite;
 
+use bme688::Bme688;
+use clock;
+use listener::Listener;
+
+type Connection = Arc<Mutex<sqlite::Connection>>;
 
 async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
      let delay = ticker.secs_to_next_tick();
      sleep(Duration::from_secs(delay.into())).await;
      Ok(())
+}
+
+
+fn launch_listener(config : &Table, rt : &Runtime, db_connection : Connection)
+{
+    let port = config["common"]["port"].as_integer().unwrap() as u16;
+    let mut listener = Listener::new(port, db_connection);
+
+    rt.spawn(async move { listener.task().await });
 }
 
 
@@ -32,14 +45,17 @@ fn main() {
 
     let db_file = config["indoor"]["database"].as_str().unwrap();
     println!("Opening database {}", db_file);
-    let db_connection = sqlite::open(db_file).unwrap();
+    let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
 
     let db_table = config["indoor"]["db_table"].as_str().unwrap();
     println!("Creating/using db table {}", db_table);
 
     let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, temperature REAL, humidity REAL, pressure REAL, PRIMARY KEY(unix_time));", db_table);
 
-    db_connection.execute(query).unwrap();
+    {
+        let conn = db_connection.lock().unwrap();
+        (*conn).execute(query).unwrap();
+    }
 
     sensor.cache_params();
 
@@ -51,7 +67,9 @@ fn main() {
     let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
     let ticker = clock::Clock::new(period * 60);
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
+
+    launch_listener(&config, &rt, db_connection.clone());
 
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();
@@ -66,6 +84,9 @@ fn main() {
 
         let query = format!("INSERT INTO {} VALUES ({},{},{},{});", db_table, unix_time, temp, humd, press);
 
-        db_connection.execute(query).unwrap();
+        {
+            let conn = db_connection.lock().unwrap();
+            (*conn).execute(query).unwrap();
+        }
     }
 }
