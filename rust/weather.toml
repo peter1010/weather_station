@@ -12,4 +12,8 @@ wind_dev = '/dev/ttyACM0'
 database = "outdoor.db"
 db_table = "Outdoor"
 
+[scgi]
+sock_name = "/run/lighttpd/scgi_app"
+database = "combined.db"
+db_table = "Combined"
 

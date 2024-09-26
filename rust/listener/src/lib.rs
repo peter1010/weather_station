@@ -72,7 +72,6 @@ impl Listener {
 
             let mut stream = BufReader::new(socket);
 
-
             // In a loop, read data from the socket and write the data back.
             loop {
                 let mut line = String::new();

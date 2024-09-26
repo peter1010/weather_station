@@ -4,7 +4,13 @@ use std::fs::remove_file;
 use std::os::unix::fs::chown;
 use std::os::unix::net::UnixListener;
 use std::io::{BufReader, BufRead, Read, Write};
-use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use toml::Table;
+use tokio::runtime::Runtime;
+
+use crate::scgi::Listener;
+
+mod scgi;
 
 const SOCK_NAME : &str = "/run/lighttpd/scgi_app";
 //const SOCK_USER : &str = "http";
@@ -50,11 +56,9 @@ fn drop_privs(uid_name : &str, gid_name : &str) {
         // Ensure a very conservative umask
         unsafe { libc::umask(0o077) }; 
     }
- 
 }
 
 fn create_socket() -> UnixListener {
-    let _ = remove_file(SOCK_NAME);
 
     let server = UnixListener::bind(SOCK_NAME).unwrap();
     drop_privs(SOCK_USER, SOCK_GROUP);
@@ -63,45 +67,35 @@ fn create_socket() -> UnixListener {
 
 
 fn main() {
-    let server = create_socket();
+    let path = std::path::Path::new("weather.toml");
+    let config_str = match std::fs::read_to_string(path) {
+        Ok(f) => f,
+        Err(e) => panic!("Failed to read config file {}", e)
+    };
 
-    loop {
-        let (conn, _addr) = server.accept().unwrap();
+    let config: Table = config_str.parse().unwrap();
+//    dbg!(&config);
 
-        let mut reader = BufReader::new(conn);
+    let sock_name = config["scgi"]["sock_name"].as_str().unwrap();
+    let _ = remove_file(sock_name);
 
-        let mut hdr_fields = HashMap::new();
+    let db_file = config["scgi"]["database"].as_str().unwrap();
+    println!("Opening database {}", db_file);
+    let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
 
-        let mut hdr_length = vec![];
-        let _ = reader.read_until(b':', &mut hdr_length);
+    let db_table = config["scgi"]["db_table"].as_str().unwrap();
+    println!("Creating/using db table {}", db_table);
 
-        // Drop the colon
-        hdr_length.pop();
-
-        let hdr_length : u32 = std::str::from_utf8(&hdr_length).unwrap().parse().unwrap();
-
-        let mut hdr = vec![0; hdr_length as usize];
-        let _ = reader.read_exact(& mut hdr);
-
-        let iter = hdr.split(|x| *x == b'\0');
-        let mut name = String::new();
-        let mut idx = 0;
-        for part in iter {
-            if idx == 0 {
-                name = std::str::from_utf8(&part).unwrap().to_string();
-                idx = 1;
-            } else {
-                let value = std::str::from_utf8(&part).unwrap().to_string();
-                idx = 0;
-                println!("{} => {}", name, value);
-                hdr_fields.insert(name.clone(), value);
-            }
-        }
-        let mut writer = reader.into_inner();
-        writer.write_all(b"Status: 200 OK\r\n");
-        writer.write_all(b"Content-Type: text/plain\r\n");
-        writer.write_all(b"\r\n");
-        writer.write_all(b"Hello, world!\r\n");
-        println!("Done");
+    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, max REAL, ave REAL, min REAL, PRIMARY KEY(unix_time));", db_table);
+    {
+        let conn = db_connection.lock().unwrap();
+        (*conn).execute(query).unwrap();
     }
+
+    let mut listener = Listener::new(sock_name, db_connection.clone());
+
+    let rt = Runtime::new().unwrap();
+
+    rt.spawn(async move { listener.task().await });
+
 }
