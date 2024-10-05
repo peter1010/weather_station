@@ -14,6 +14,8 @@ db_table = "Outdoor"
 
 [scgi]
 sock_name = "/run/lighttpd/scgi_app"
+sock_user = "lighttpd";
+sock_group = "lighttpd";
 database = "combined.db"
 db_table = "Combined"
 

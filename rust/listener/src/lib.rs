@@ -53,6 +53,47 @@ impl Listener {
                 .collect());
     }
 
+    async fn measurement_resp(&self, unix_time : i64, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) {
+
+        println!("Rcv'd {:?}", unix_time);
+
+        let mut response = String::new();
+
+        let query = format!("select * from {} where unix_time > {};", self.table_name.as_ref().unwrap(), unix_time);
+        {
+            let conn = self.db_connection.lock().unwrap();
+
+            let statement = (*conn).prepare(query).unwrap();
+
+            for row in statement
+                .into_iter()
+                .map(|row| row.unwrap())
+            {
+                // println!("{:?}", row);
+                response += &(format!("unix_time = {}", row.read::<i64, _>("unix_time")) + "\n");
+                for col in self.column_names.as_ref().unwrap() {
+                    response += &(format!("\t{} = {}", col, row.read::<f64, _>(col.as_str())) + "\n");
+                }
+            }
+        }
+
+        stream.write_all(response.as_bytes()).await
+                    .expect("failed to write data to socket");
+    }
+
+
+    async fn columns_resp(&self, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) {
+        println!("Rcv'd columns");
+
+        let mut response = String::new();
+
+        for column in self.column_names.as_ref().unwrap() {
+            response += &(String::from(column) + "\n");
+        }
+        stream.write_all(response.as_bytes()).await
+                    .expect("failed to write data to socket");
+    }
+
 
     pub async fn task(&mut self) -> io::Result<()> {
         self.get_table();
@@ -85,36 +126,14 @@ impl Listener {
                     break;
                 }
 
-                let unix_time = line.trim().parse::<i64>();
-                if !unix_time.is_ok() {
-                    continue;
-                }
-                let unix_time = unix_time.unwrap();
-
-                println!("Rcv'd {:?}", unix_time);
-
-                let mut response = String::new();
-
-                let query = format!("select * from {} where unix_time > {};", self.table_name.as_ref().unwrap(), unix_time);
-                {
-                    let conn = self.db_connection.lock().unwrap();
-
-                    let statement = (*conn).prepare(query).unwrap();
-
-                    for row in statement
-                        .into_iter()
-                        .map(|row| row.unwrap())
-                    {
-                        // println!("{:?}", row);
-                        response += &(format!("unix_time = {}", row.read::<i64, _>("unix_time")) + "\n");
-                        for col in self.column_names.as_ref().unwrap() {
-                            response += &(format!("\t{} = {}", col, row.read::<f64, _>(col.as_str())) + "\n");
-                        }
+                if line == "columns" {
+                    self.columns_resp(&mut stream).await;
+                } else {
+                    let unix_time = line.trim().parse::<i64>();
+                    if unix_time.is_ok() {
+                        self.measurement_resp(unix_time.unwrap(), &mut stream).await;
                     }
                 }
-
-                stream.write_all(response.as_bytes()).await
-                    .expect("failed to write data to socket");
             }
         }
     }

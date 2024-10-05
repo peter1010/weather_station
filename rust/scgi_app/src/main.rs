@@ -7,12 +7,15 @@ use std::io::{BufReader, BufRead, Read, Write};
 use std::sync::{Arc, Mutex};
 use toml::Table;
 use tokio::runtime::Runtime;
+use tokio::time::sleep;
+use std::time::Duration;
 
 use crate::scgi::Listener;
 
+use clock;
+
 mod scgi;
 
-const SOCK_NAME : &str = "/run/lighttpd/scgi_app";
 //const SOCK_USER : &str = "http";
 const SOCK_USER : &str = "lighttpd";
 //const SOCK_GROUP : &str = "http";
@@ -38,11 +41,11 @@ fn get_uid_and_gid(uid_name : &str, gid_name : &str) -> Option<(u32, u32)> {
     Some((uid, gid))
 }
 
-fn drop_privs(uid_name : &str, gid_name : &str) {
+fn drop_privs(sock_name: &str, uid_name : &str, gid_name : &str) {
 
     let (uid, gid) = get_uid_and_gid(uid_name, gid_name).unwrap();
 
-    chown(SOCK_NAME, Some(uid), Some(gid)).expect("Chown failed");
+    chown(sock_name, Some(uid), Some(gid)).expect("Chown failed");
 
     let p_uid = unsafe { libc::getuid() };
     if p_uid == 0 {
@@ -58,11 +61,17 @@ fn drop_privs(uid_name : &str, gid_name : &str) {
     }
 }
 
-fn create_socket() -> UnixListener {
+//fn create_socket() -> UnixListener {
+//
+//    let server = UnixListener::bind(SOCK_NAME).unwrap();
+//    drop_privs(SOCK_USER, SOCK_GROUP);
+//    return server
+//}
 
-    let server = UnixListener::bind(SOCK_NAME).unwrap();
-    drop_privs(SOCK_USER, SOCK_GROUP);
-    return server
+async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
+     let delay = ticker.secs_to_next_tick() + 60;
+     sleep(Duration::from_secs(delay.into())).await;
+     Ok(())
 }
 
 
@@ -98,4 +107,12 @@ fn main() {
 
     rt.spawn(async move { listener.task().await });
 
+    let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
+    let ticker = clock::Clock::new(period * 60);
+
+    loop {
+        rt.block_on(wait_tick(&ticker)).unwrap();
+        println!("Tick");
+
+    }
 }
