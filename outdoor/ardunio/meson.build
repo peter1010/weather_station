@@ -1,5 +1,9 @@
 project('ardunio_wind', 'c')
 
+if not meson.is_cross_build()
+    error('must be invoked with "meson setup --cross-file ardunio.ini build"')
+endif
+
 srcs = ['main.c']
 
 exec = executable('ardunio_wind.elf', srcs, build_by_default : false)
