@@ -1,5 +1,5 @@
 [workspace]
-members = ["bme688", "indoor", "outdoor", "clock", "scgi_app", "listener"]
+members = ["bme688", "indoor", "outdoor", "clock", "scgi_app", "listener", "sht31"]
 resolver = "2"
 
 [workspace.package]
