@@ -58,8 +58,7 @@ impl Listener {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    async fn measurement_resp(&self, unix_time : i64, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) {
-
+    async fn measurement_resp(&self, unix_time : i64, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) -> io::Result<()> {
         println!("Rcv'd {:?}", unix_time);
 
         let mut response = String::new();
@@ -82,13 +81,13 @@ impl Listener {
             }
         }
 
-        stream.write_all(response.as_bytes()).await
-                    .expect("failed to write data to socket");
+        stream.write_all(response.as_bytes()).await?;
+        Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    async fn columns_resp(&self, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) {
+    async fn columns_resp(&self, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) -> io::Result<()>{
         println!("Rcv'd columns");
 
         let mut response = String::new();
@@ -96,8 +95,8 @@ impl Listener {
         for column in self.column_names.as_ref().unwrap() {
             response += &(String::from(column) + "\n");
         }
-        stream.write_all(response.as_bytes()).await
-                    .expect("failed to write data to socket");
+        stream.write_all(response.as_bytes()).await?;
+        Ok(())
     }
 
 
@@ -135,13 +134,13 @@ impl Listener {
                 line = String::from(line.trim());
 
                 if line == "columns" {
-                    self.columns_resp(&mut stream).await;
+                    self.columns_resp(&mut stream).await?;
                 } else {
                     let unix_time = line.parse::<i64>();
                     if unix_time.is_ok() {
-                        self.measurement_resp(unix_time.unwrap(), &mut stream).await;
+                        self.measurement_resp(unix_time.unwrap(), &mut stream).await?;
                     } else {
-                        stream.write_all(format!("Error unknown command {}\n", line).as_bytes()).await;
+                        stream.write_all(format!("Error unknown command {}\n", line).as_bytes()).await?;
                     }
                 }
             }
