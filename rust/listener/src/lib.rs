@@ -17,6 +17,7 @@ pub struct Listener {
 
 impl Listener {
 
+    //------------------------------------------------------------------------------------------------------------------------------
     pub fn new(port :u16, db_connection : Arc<Mutex<Connection>>) -> Listener {
         Listener {
             port,
@@ -27,6 +28,7 @@ impl Listener {
     }
 
 
+    //------------------------------------------------------------------------------------------------------------------------------
     fn get_table(&mut self) {
         if self.table_name.is_some() {
             return
@@ -41,6 +43,7 @@ impl Listener {
     }
 
 
+    //------------------------------------------------------------------------------------------------------------------------------
     fn get_columns(&mut self) {
         let query = format!("pragma table_info ('{}');", self.table_name.as_ref().unwrap());
         let conn = self.db_connection.lock().unwrap();
@@ -53,6 +56,8 @@ impl Listener {
                 .collect());
     }
 
+
+    //------------------------------------------------------------------------------------------------------------------------------
     async fn measurement_resp(&self, unix_time : i64, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) {
 
         println!("Rcv'd {:?}", unix_time);
@@ -82,6 +87,7 @@ impl Listener {
     }
 
 
+    //------------------------------------------------------------------------------------------------------------------------------
     async fn columns_resp(&self, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) {
         println!("Rcv'd columns");
 
@@ -95,6 +101,7 @@ impl Listener {
     }
 
 
+    //------------------------------------------------------------------------------------------------------------------------------
     pub async fn task(&mut self) -> io::Result<()> {
         self.get_table();
         self.get_columns();
@@ -125,13 +132,16 @@ impl Listener {
                 if n == 0 {
                     break;
                 }
+                line = String::from(line.trim());
 
                 if line == "columns" {
                     self.columns_resp(&mut stream).await;
                 } else {
-                    let unix_time = line.trim().parse::<i64>();
+                    let unix_time = line.parse::<i64>();
                     if unix_time.is_ok() {
                         self.measurement_resp(unix_time.unwrap(), &mut stream).await;
+                    } else {
+                        stream.write_all(format!("Error unknown command {}\n", line).as_bytes()).await;
                     }
                 }
             }
