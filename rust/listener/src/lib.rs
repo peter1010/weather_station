@@ -82,6 +82,7 @@ impl Listener {
         }
 
         stream.write_all(response.as_bytes()).await?;
+        stream.write_all(b"\n").await?;
         Ok(())
     }
 
@@ -95,6 +96,7 @@ impl Listener {
         for column in self.column_names.as_ref().unwrap() {
             response += &(String::from(column) + "\n");
         }
+        response += &("\n");
         stream.write_all(response.as_bytes()).await?;
         Ok(())
     }
