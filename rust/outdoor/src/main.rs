@@ -46,7 +46,7 @@ fn create_db_connection(config : &Table)-> (Connection, String) {
     let db_table = config["outdoor"]["db_table"].as_str().unwrap();
     println!("Creating/using db table {}", db_table);
 
-    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, max REAL, ave REAL, min REAL,
+    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, max_speed REAL, ave_speed REAL, min_speed REAL,
             PRIMARY KEY(unix_time));", db_table);
     {
         let conn = db_connection.lock().unwrap();

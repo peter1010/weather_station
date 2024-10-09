@@ -17,6 +17,8 @@ pub struct Summary {
 
 
 impl Summary {
+
+    //------------------------------------------------------------------------------------------------------------------------------
     pub fn new(accum : &Accumulated, ticker : &clock::Clock) -> Summary {
         Summary {
             max_value : accum.max_value,
@@ -26,12 +28,14 @@ impl Summary {
         }
     }
 
+    //------------------------------------------------------------------------------------------------------------------------------
     pub fn print(& self) {
         let dt = DateTime::from_timestamp(self.unix_time, 0).expect("invalid timestamp");
         println!("{} {} {} {}", dt, self.max_value, self.ave_value, self.min_value);
     }
 
 
+    //------------------------------------------------------------------------------------------------------------------------------
     pub fn sql_insert_cmd(& self, table : &str) -> String {
         format!("INSERT INTO {} VALUES ({},{},{},{});",
             table, self.unix_time, self.max_value, self.ave_value, self.min_value)
@@ -42,6 +46,7 @@ impl Summary {
 
 impl Accumulated {
 
+    //------------------------------------------------------------------------------------------------------------------------------
     pub const fn new() -> Self {
         Accumulated {
             max_value : 0.0,
@@ -52,14 +57,13 @@ impl Accumulated {
     }
 
 
+    //------------------------------------------------------------------------------------------------------------------------------
     pub fn add(&mut self, value : f32) {
         if self.num_of > 0 {
             if value > self.max_value {
                 self.max_value = value;
-            } else {
-                if value < self.min_value {
-                    self.min_value = value;
-                }
+            } else if value < self.min_value {
+                self.min_value = value;
             }
             self.num_of += 1;
             self.sum += value as f64;
@@ -71,6 +75,7 @@ impl Accumulated {
         }
     }
 
+    //------------------------------------------------------------------------------------------------------------------------------
     pub fn sample(&mut self, ticker : &clock::Clock) -> Summary {
         let result = Summary::new(&self, ticker);
         result.print();
