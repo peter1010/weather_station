@@ -3,18 +3,25 @@ use std::ffi::CString;
 use std::fs::remove_file;
 use std::os::unix::fs::chown;
 use std::os::unix::net::UnixListener;
-use std::io::{BufReader, BufRead, Read, Write};
+use std::io::{BufRead, Read, Write};
 use std::sync::{Arc, Mutex};
 use toml::Table;
 use tokio::runtime::Runtime;
 use tokio::time::sleep;
 use std::time::Duration;
-
+use std::net::{SocketAddr, ToSocketAddrs};
+use tokio::net::TcpStream;
+use tokio::io::{BufReader, AsyncWriteExt, AsyncBufReadExt, AsyncBufRead};
 use crate::scgi::Listener;
 
 use clock;
 
 mod scgi;
+
+use crate::sensor::Sensor;
+mod sensor;
+
+type Connection = Arc<Mutex<sqlite::Connection>>;
 
 //const SOCK_USER : &str = "http";
 const SOCK_USER : &str = "lighttpd";
@@ -75,6 +82,37 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
+fn get_address(config : &Table, section : &str) -> SocketAddr {
+    let host = config[section]["host"].as_str().unwrap();
+    let port = config["common"]["port"].as_integer().unwrap();
+    let mut addrs_iter = format!("{}:{}", host, port).to_socket_addrs().unwrap();
+    println!("{:?}", addrs_iter);
+    addrs_iter.next().unwrap()
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+fn create_db_connection(config : &Table)-> (Connection, String) {
+
+    let db_file = config["scgi"]["database"].as_str().unwrap();
+    println!("Opening database {}", db_file);
+    let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
+
+    let db_table = config["scgi"]["db_table"].as_str().unwrap();
+    println!("Creating/using db table {}", db_table);
+
+    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, temperature REAL, humidity REAL, pressure REAL, PRIMARY KEY(unix_time));", db_table);
+
+    {
+        let conn = db_connection.lock().unwrap();
+        (*conn).execute(query).unwrap();
+    }
+    (db_connection, String::from(db_table))
+}
+
+
+
 fn main() {
     let path = std::path::Path::new("weather.toml");
     let config_str = match std::fs::read_to_string(path) {
@@ -85,25 +123,26 @@ fn main() {
     let config: Table = config_str.parse().unwrap();
 //    dbg!(&config);
 
+    let indoor_sensor = Sensor::new(get_address(&config, "indoor"));
+
+    let outdoor_sensor = Sensor::new(get_address(&config, "outdoor"));
+
+    let rt = Runtime::new().unwrap();
+
+    let columns = rt.block_on(indoor_sensor.get_column_names());
+    println!("{:?}", columns);
+    let columns = rt.block_on(outdoor_sensor.get_column_names());
+    println!("{:?}", columns);
+
+
+
     let sock_name = config["scgi"]["sock_name"].as_str().unwrap();
     let _ = remove_file(sock_name);
 
-    let db_file = config["scgi"]["database"].as_str().unwrap();
-    println!("Opening database {}", db_file);
-    let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
-
-    let db_table = config["scgi"]["db_table"].as_str().unwrap();
-    println!("Creating/using db table {}", db_table);
-
-    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, max REAL, ave REAL, min REAL, PRIMARY KEY(unix_time));", db_table);
-    {
-        let conn = db_connection.lock().unwrap();
-        (*conn).execute(query).unwrap();
-    }
+    let (db_connection, db_table) = create_db_connection(&config);
 
     let mut listener = Listener::new(sock_name, db_connection.clone());
 
-    let rt = Runtime::new().unwrap();
 
     rt.spawn(async move { listener.task().await });
 

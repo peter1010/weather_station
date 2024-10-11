@@ -6,11 +6,13 @@ port = 8080
 dev = "/dev/i2c-bme688"
 database = "indoor.db"
 db_table = "Indoor"
+host = "gandalf.home.arpa"
 
 [outdoor]
 wind_dev = '/dev/ttyACM0'
 database = "outdoor.db"
 db_table = "Outdoor"
+host = "eowyn.dyn.home.arpa"
 
 [scgi]
 sock_name = "/run/lighttpd/scgi_app"
