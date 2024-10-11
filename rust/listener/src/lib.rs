@@ -8,6 +8,7 @@ use tokio::io::{self,AsyncBufReadExt,AsyncWriteExt, BufReader};
 use std::sync::{Arc, Mutex};
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
 pub struct Listener {
     port : u16,
     db_connection : Arc<Mutex<Connection>>,
@@ -15,6 +16,7 @@ pub struct Listener {
     column_names : Option<Vec<String>>
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
 impl Listener {
 
     //------------------------------------------------------------------------------------------------------------------------------
@@ -103,9 +105,38 @@ impl Listener {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
+    async fn process_client(&mut self, mut stream : impl AsyncWriteExt + AsyncBufReadExt + std::marker::Unpin) -> io::Result<()>{
+        loop {
+            let mut line = String::new();
+
+            let n = stream
+                    .read_line(&mut line)
+                    .await
+                    .expect("failed to read data from socket");
+
+            if n == 0 {
+                return Ok(());
+            }
+            line = String::from(line.trim());
+
+            if line == "columns" {
+                self.columns_resp(&mut stream).await?;
+            } else {
+                let unix_time = line.parse::<i64>();
+                if unix_time.is_ok() {
+                    self.measurement_resp(unix_time.unwrap(), &mut stream).await?;
+                } else {
+                    stream.write_all(format!("Error unknown command {}\n", line).as_bytes()).await?;
+                }
+            }
+        }
+    }
+
+    //------------------------------------------------------------------------------------------------------------------------------
     pub async fn task(&mut self) -> io::Result<()> {
         self.get_table();
         self.get_columns();
+
         // println!("{:?}", self.column_names);
         let sock_addr = format!("0.0.0.0:{}", self.port);
 
@@ -119,33 +150,9 @@ impl Listener {
             // Asynchronously wait for an inbound socket.
             let (socket, _) = listener.accept().await?;
 
-            let mut stream = BufReader::new(socket);
+            let stream = BufReader::new(socket);
 
-            // In a loop, read data from the socket and write the data back.
-            loop {
-                let mut line = String::new();
-
-                let n = stream
-                    .read_line(&mut line)
-                    .await
-                    .expect("failed to read data from socket");
-
-                if n == 0 {
-                    break;
-                }
-                line = String::from(line.trim());
-
-                if line == "columns" {
-                    self.columns_resp(&mut stream).await?;
-                } else {
-                    let unix_time = line.parse::<i64>();
-                    if unix_time.is_ok() {
-                        self.measurement_resp(unix_time.unwrap(), &mut stream).await?;
-                    } else {
-                        stream.write_all(format!("Error unknown command {}\n", line).as_bytes()).await?;
-                    }
-                }
-            }
+            self.process_client(stream).await?
         }
     }
 }

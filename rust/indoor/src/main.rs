@@ -11,6 +11,7 @@ use listener::Listener;
 
 type Connection = Arc<Mutex<sqlite::Connection>>;
 
+//----------------------------------------------------------------------------------------------------------------------------------
 async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
      let delay_seconds = ticker.secs_to_next_tick();
      sleep(Duration::from_secs(delay_seconds.into())).await;
@@ -18,6 +19,7 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
 fn launch_listener(config : &Table, rt : &Runtime, db_connection : Connection)
 {
     let port = config["common"]["port"].as_integer().unwrap() as u16;
@@ -27,6 +29,7 @@ fn launch_listener(config : &Table, rt : &Runtime, db_connection : Connection)
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
 fn create_sensor(config : &Table) -> Bme688 {
 
     let dev_name = config["indoor"]["dev"].as_str().unwrap();
@@ -44,12 +47,14 @@ fn create_sensor(config : &Table) -> Bme688 {
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
 fn create_ticker(config : &Table) -> clock::Clock {
     let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
     clock::Clock::new(period * 60)
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
 fn create_db_connection(config : &Table)-> (Connection, String) {
 
     let db_file = config["indoor"]["database"].as_str().unwrap();
@@ -59,7 +64,8 @@ fn create_db_connection(config : &Table)-> (Connection, String) {
     let db_table = config["indoor"]["db_table"].as_str().unwrap();
     println!("Creating/using db table {}", db_table);
 
-    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, temperature REAL, humidity REAL, pressure REAL, PRIMARY KEY(unix_time));", db_table);
+    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL,
+            temperature REAL, humidity REAL, pressure REAL, PRIMARY KEY(unix_time));", db_table);
 
     {
         let conn = db_connection.lock().unwrap();
@@ -69,6 +75,7 @@ fn create_db_connection(config : &Table)-> (Connection, String) {
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
 fn main() {
 
     let path = std::path::Path::new("weather.toml");
