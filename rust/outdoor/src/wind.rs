@@ -2,7 +2,7 @@ use tokio::fs::File;
 use tokio::io::{self, AsyncBufReadExt};
 use clock;
 use crate::stats;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::fmt;
 
 
@@ -12,12 +12,6 @@ pub struct WindError {
 }
 
 type Result<T> = std::result::Result<T, WindError>;
-
-//----------------------------------------------------------------------------------------------------------------------------------
-pub struct Wind {
-    pub speed : Mutex<stats::Accumulated>,
-    pub dev_name : String
-}
 
 //----------------------------------------------------------------------------------------------------------------------------------
 impl From<io::Error> for WindError {
@@ -38,12 +32,27 @@ impl From<&str> for WindError {
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
+impl<T> From<PoisonError<T>> for WindError {
+    fn from(error: PoisonError<T>) -> WindError {
+        WindError {
+            error : format!("Mutex Error {}", error)
+        }
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
 impl fmt::Debug for WindError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.error)
     }
 }
 
+
+//----------------------------------------------------------------------------------------------------------------------------------
+pub struct Wind {
+    pub speed : Mutex<stats::Accumulated>,
+    pub dev_name : String
+}
 
 //----------------------------------------------------------------------------------------------------------------------------------
 impl Wind {
@@ -59,19 +68,16 @@ impl Wind {
 
     //------------------------------------------------------------------------------------------------------------------------------
     fn process(&self, speed : f32) -> Result<()> {
-        match self.speed.lock() {
-            Ok(mut data) => {(*data).add(speed); Ok(()) },
-            Err(..) => Err(WindError::from("Mutex failed"))
-        }
+        let mut data = self.speed.lock()?;
+        (*data).add(speed);
+        Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
     pub fn sample(&self, ticker : &clock::Clock) -> Result<stats::Summary> {
-        match self.speed.lock() {
-            Ok(mut data) => Ok((*data).sample(&ticker)),
-            Err(..) => Err(WindError::from("Mutex failed"))
-        }
+        let mut data =self.speed.lock()?;
+        Ok((*data).sample(&ticker))
     }
 
 
