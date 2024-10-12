@@ -106,7 +106,7 @@ fn main() -> Result<(), ()> {
         rt.block_on(wait_tick(&ticker)).unwrap();
         println!("Tick");
         let measurement = wind.sample(&ticker);
-        let query = measurement.sql_insert_cmd("outdoor");
+        let query = measurement.unwrap().sql_insert_cmd("outdoor");
         {
             let conn = db_connection.lock().unwrap();
             (*conn).execute(query).unwrap();

@@ -1,3 +1,4 @@
+use std::fmt;
 use chrono::DateTime;
 use clock;
 
@@ -88,6 +89,14 @@ impl Accumulated {
     }
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+impl fmt::Debug for Accumulated {
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Acc({},{},{},{})", self.max_value, self.min_value, self.sum, self.num_of)
+    }
+}
 
 //----------------------------------------------------------------------------------------------------------------------------------
 #[cfg(test)]
@@ -120,5 +129,11 @@ mod tests {
         assert_eq!(acc.min_value, 3.4);
         assert_eq!(acc.num_of, 2);
         assert_relative_eq!(acc.sum, 9.6 + 3.4, max_relative = 0.01);
+    }
+
+    #[test]
+    fn check_print_debug() {
+        let acc = Accumulated::new();
+        assert_eq!(format!("{:?}", acc), "Acc(0,0,0,0)");
     }
 }
