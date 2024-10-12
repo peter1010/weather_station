@@ -5,7 +5,7 @@ use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use sqlite;
 
-use bme688::Bme688;
+use bme688;
 use clock;
 use listener::Listener;
 
@@ -30,20 +30,20 @@ fn launch_listener(config : &Table, rt : &Runtime, db_connection : Connection)
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_sensor(config : &Table) -> Bme688 {
+fn create_sensor(config : &Table) -> bme688::Result<bme688::Bme688> {
 
     let dev_name = config["indoor"]["dev"].as_str().unwrap();
     println!("Reading from {} for indoor sensor", dev_name);
 
-    let mut sensor =  Bme688::new(dev_name).unwrap();
+    let mut sensor = bme688::Bme688::new(dev_name)?;
 
-    sensor.cache_params();
+    sensor.cache_params()?;
 
-    sensor.set_humdity_oversampling(16);
-    sensor.set_pressure_oversampling(16);
-    sensor.set_temperature_oversampling(16);
+    sensor.set_humdity_oversampling(16)?;
+    sensor.set_pressure_oversampling(16)?;
+    sensor.set_temperature_oversampling(16)?;
 
-    sensor
+    Ok(sensor)
 }
 
 
@@ -87,7 +87,7 @@ fn main() {
     let config: Table = config_str.parse().unwrap();
     // dbg!(&config);
 
-    let mut sensor = create_sensor(&config);
+    let mut sensor = create_sensor(&config).unwrap();
 
     let (db_connection, db_table) = create_db_connection(&config);
 
@@ -101,11 +101,11 @@ fn main() {
         rt.block_on(wait_tick(&ticker)).unwrap();
         println!("Tick");
 
-        sensor.force();
+        sensor.force().unwrap();
 
-        let temp = sensor.read_temp(0);
-        let press = sensor.read_press(0);
-        let humd = sensor.read_humd(0);
+        let temp = sensor.read_temp(0).unwrap();
+        let press = sensor.read_press(0).unwrap();
+        let humd = sensor.read_humd(0).unwrap();
         let unix_time = ticker.get_nearest_tick();
 
         let query = format!("INSERT INTO {} VALUES ({},{},{},{});", db_table, unix_time, temp, humd, press);

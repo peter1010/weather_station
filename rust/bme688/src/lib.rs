@@ -2,8 +2,54 @@ extern crate i2cdev;
 
 use i2cdev::linux::{LinuxI2CDevice, LinuxI2CError};
 use i2cdev::core::*;
+use std::fmt;
 
 const BME688_ADDR : u16 = 0x76;
+
+//----------------------------------------------------------------------------------------------------------------------------------
+pub struct Bme688Error {
+    error : String
+}
+
+pub type Result<T> = std::result::Result<T, Bme688Error>;
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//impl From<io::Error> for Bme688Error {
+//    fn from(error: io::Error) -> Bme688Error {
+//        Bme688Error {
+//            error : format!("IO Error {}", error)
+//        }
+//    }
+//}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl From<LinuxI2CError> for Bme688Error {
+    fn from(error: LinuxI2CError) -> Bme688Error {
+        Bme688Error {
+            error : format!("I2C Error {}", error)
+        }
+    }
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl From<&str> for Bme688Error {
+    fn from(error : &str) -> Bme688Error {
+        Bme688Error {
+            error : String::from(error)
+        }
+    }
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl fmt::Debug for Bme688Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.error)
+    }
+}
+
+
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Bme688 {
@@ -56,14 +102,7 @@ pub struct Bme688 {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-#[derive(Debug)]
-enum Bme688Error {
-    ConversionError,
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-fn calc_oversampling(reqd : u8) -> Result<u8, Bme688Error> {
+fn calc_oversampling(reqd : u8) -> Result<u8> {
     let result;
     if reqd == 1 {
         result =  1;  // no oversampling
@@ -76,7 +115,7 @@ fn calc_oversampling(reqd : u8) -> Result<u8, Bme688Error> {
     } else if reqd == 16 {
         result =  5; // 8x oversampling
     } else {
-        return Err(Bme688Error::ConversionError);
+        return Err(Bme688Error::from("Conversion Error"));
     }
     Ok(result)
 }
@@ -89,7 +128,7 @@ fn two_to_pow(exp : i8) -> f64 {
 //----------------------------------------------------------------------------------------------------------------------------------
 impl Bme688 {
 
-    pub fn new(dev_name : &str) -> Result<Self,LinuxI2CError> {
+    pub fn new(dev_name : &str) -> Result<Self> {
         let dev = LinuxI2CDevice::new(dev_name, BME688_ADDR)?;
 
         let this = Self {
@@ -109,35 +148,35 @@ impl Bme688 {
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn read_u8(&mut self, addr : u8) -> u8 {
-        self.dev.smbus_read_byte_data(addr).unwrap()
+    fn read_u8(&mut self, addr : u8) -> Result<u8> {
+        Ok(self.dev.smbus_read_byte_data(addr)?)
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn write_u8(&mut self, addr :u8, value : u8) {
-        self.dev.smbus_write_byte_data(addr, value).unwrap();
+    fn write_u8(&mut self, addr :u8, value : u8) -> Result<()> {
+        Ok(self.dev.smbus_write_byte_data(addr, value)?)
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn read_u16_le(&mut self, addr : u8) -> u16 {
+    fn read_u16_le(&mut self, addr : u8) -> Result<u16> {
         // little-endian
-        ((self.read_u8(addr+1) as u16) << 8) | (self.read_u8(addr) as u16)
+        Ok(((self.read_u8(addr+1)? as u16) << 8) | (self.read_u8(addr)? as u16))
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn read_u16_be(&mut self, addr : u8) -> u16 {
+    fn read_u16_be(&mut self, addr : u8) -> Result<u16> {
         // big-endian
-        ((self.read_u8(addr) as u16) << 8) | (self.read_u8(addr + 1) as u16)
+        Ok(((self.read_u8(addr)? as u16) << 8) | (self.read_u8(addr + 1)? as u16))
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn read_i8(&mut self, addr : u8) -> i8 {
-        self.dev.smbus_read_byte_data(addr).unwrap() as i8
+    fn read_i8(&mut self, addr : u8) -> Result<i8> {
+        Ok(self.dev.smbus_read_byte_data(addr)? as i8)
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn read_i16_le(&mut self, addr : u8) -> i16 {
-        self.read_u16_le(addr) as i16
+    fn read_i16_le(&mut self, addr : u8) -> Result<i16> {
+        Ok(self.read_u16_le(addr)? as i16)
     }
 
 
@@ -149,10 +188,10 @@ impl Bme688 {
     /// t_fine = var1 + var2;
     /// temp = t_fine / 5120.0
     ///
-    fn cache_temperature_params(&mut self) {
-        let par_t1 = self.read_u16_le(0xE9);
-        let par_t2 = self.read_i16_le(0x8A);
-        let par_t3 = self.read_i8(0x8C);
+    fn cache_temperature_params(&mut self) -> Result<()> {
+        let par_t1 = self.read_u16_le(0xE9)?;
+        let par_t2 = self.read_i16_le(0x8A)?;
+        let par_t3 = self.read_i8(0x8C)?;
 
         // 16 = 2^4
         // 131072 = 2^17
@@ -188,6 +227,7 @@ impl Bme688 {
         self.par_ta = (a as f64) * denom;
         self.par_tb = (b as f64) * denom;
         self.par_tc = (c as f64) * denom;
+        Ok(())
     }
 
 
@@ -200,10 +240,10 @@ impl Bme688 {
     /// var1b = var1a + (var1 * par_p5 * 2);
     /// var2 = (var1b / 4) + (par_p4 * 65536);
     ///
-    fn cache_pressure_params2(&mut self) {
-        let par_p4 = self.read_i16_le(0x94);
-        let par_p5 = self.read_i16_le(0x96);
-        let par_p6 = self.read_i8(0x99);
+    fn cache_pressure_params2(&mut self) -> Result <()> {
+        let par_p4 = self.read_i16_le(0x94)?;
+        let par_p5 = self.read_i16_le(0x96)?;
+        let par_p6 = self.read_i8(0x99)?;
 
         // var2 = (var1b / 2^2) + (par_p4 * 2^16);
         // var2 = ((var1a + (var1 * par_p5 * 2)) / 2^2) + (par_p4 * 2^16);
@@ -248,6 +288,7 @@ impl Bme688 {
         self.par_pvar2c = (c as f64) * denom;
 
 //        println!("Pres var2 = {:?} * temp^2 + {:?} * temp + {:?}", self.par_pvar2a, self.par_pvar2b, self.par_pvar2c);
+        Ok(())
     }
 
 
@@ -259,10 +300,10 @@ impl Bme688 {
     /// var1a = (((par_p3 * var1 * var1) / 16384) + (par_p2 * var1)) / 524288;
     /// var1b = (1 + (var1a / 32768)) * par_p1;
     ///
-    fn cache_pressure_params1(&mut self) {
-        let par_p1 = self.read_u16_le(0x8E);
-        let par_p2 = self.read_i16_le(0x90);
-        let par_p3 = self.read_i8(0x92);
+    fn cache_pressure_params1(&mut self) -> Result<()> {
+        let par_p1 = self.read_u16_le(0x8E)?;
+        let par_p2 = self.read_i16_le(0x90)?;
+        let par_p3 = self.read_i8(0x92)?;
 
         // var1b = par_p1 * (1 + var1a / 2^15);
         // var1b = par_p1 * (1 + ((((par_p3 * var1 * var1) /2^14) + (par_p2 * var1)) / 2^19) /2^15))
@@ -296,6 +337,7 @@ impl Bme688 {
         self.par_pvar1c = (c as f64) * denom;
 
 //        println!("Pres var1 = {:?} * temp^2 + {:?} * temp + {:?}", self.par_pvar1a, self.par_pvar1b, self.par_pvar1c);
+        Ok(())
     }
 
 
@@ -307,12 +349,12 @@ impl Bme688 {
     /// var3 = (press_comp / 256) * (press_comp / 256) * (press_comp / 256) * (par_p10 / 131072);
     /// press_comp = press_comp + (var1_p + var2_p + var3_p + (par_p7 * 128)) / 16;
     ///
-    fn cache_pressure_params3(&mut self) {
+    fn cache_pressure_params3(&mut self) -> Result<()> {
 
-        let par_p7 = self.read_i8(0x98);
-        let par_p8 = self.read_i16_le(0x9C);
-        let par_p9 = self.read_i16_le(0x9E);
-        let par_p10 = self.read_i8(0xA0);
+        let par_p7 = self.read_i8(0x98)?;
+        let par_p8 = self.read_i16_le(0x9C)?;
+        let par_p9 = self.read_i16_le(0x9E)?;
+        let par_p10 = self.read_i8(0xA0)?;
 
 
         // pressure = A * press_comp^3 + B * press_comp^2 + C * press_comp + D
@@ -343,21 +385,22 @@ impl Bme688 {
         self.par_pd = (d as f64) * denom;
 
 //        println!("Pressure = {:?} * comp^3 + {:?} * comp^2 + {:?} * comp + {:?}", self.par_pa, self.par_pb, self.par_pc, self.par_pd);
+        Ok(())
 
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn cache_humditiy_params(&mut self) {
+    fn cache_humditiy_params(&mut self) -> Result<()>{
 
-        let tmp = self.read_u8(0xE2) as u16;
-        let par_h1 = ((self.read_u8(0xE3) as u16) << 4) | (tmp & 0x0F);
-        let par_h2 = ((self.read_u8(0xE1) as u16) << 4) | (tmp >> 4);
-        let par_h3 = self.read_i8(0xE4);
-        let par_h4 = self.read_i8(0xE5);
-        let par_h5 = self.read_i8(0xE6);
-        let par_h6 = self.read_i8(0xE7);
-        let par_h7 = self.read_i8(0xE8);
+        let tmp = self.read_u8(0xE2)? as u16;
+        let par_h1 = ((self.read_u8(0xE3)? as u16) << 4) | (tmp & 0x0F);
+        let par_h2 = ((self.read_u8(0xE1)? as u16) << 4) | (tmp >> 4);
+        let par_h3 = self.read_i8(0xE4)?;
+        let par_h4 = self.read_i8(0xE5)?;
+        let par_h5 = self.read_i8(0xE6)?;
+        let par_h6 = self.read_i8(0xE7)?;
+        let par_h7 = self.read_i8(0xE8)?;
 
         // From the Datasheet...
         // var1 = humd_adc - ((par_h1 * 16) + ((par_h3 / 2) * temp));
@@ -381,80 +424,85 @@ impl Bme688 {
         // var1 = humd_adc - (par_h1 + par_h3 * temp);
         // var2 = var1 * (par_h2 + par_h4 * temp + par_h5 * temp * temp);
         // humd_comp = var2 + (par_h6 + (par_h7 * temp)) * var2 * var2);
+        Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn cache_params(&mut self) {
-        self.cache_temperature_params();
-        self.cache_pressure_params1();
-        self.cache_pressure_params2();
-        self.cache_pressure_params3();
-        self.cache_humditiy_params();
+    pub fn cache_params(&mut self) -> Result<()>{
+        self.cache_temperature_params()?;
+        self.cache_pressure_params1()?;
+        self.cache_pressure_params2()?;
+        self.cache_pressure_params3()?;
+        self.cache_humditiy_params()?;
+        Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn set_humdity_oversampling(&mut self, oversampling : u8) {
-        self.hum_oversampling = calc_oversampling(oversampling).unwrap();
+    pub fn set_humdity_oversampling(&mut self, oversampling : u8) -> Result<()> {
+        self.hum_oversampling = calc_oversampling(oversampling)?;
+        Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn set_temperature_oversampling(&mut self, oversampling : u8) {
-        self.temp_oversampling = calc_oversampling(oversampling).unwrap();
+    pub fn set_temperature_oversampling(&mut self, oversampling : u8) -> Result<()>{
+        self.temp_oversampling = calc_oversampling(oversampling)?;
+        Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn set_pressure_oversampling(&mut self, oversampling : u8) {
-        self.pres_oversampling = calc_oversampling(oversampling).unwrap();
+    pub fn set_pressure_oversampling(&mut self, oversampling : u8) -> Result<()> {
+        self.pres_oversampling = calc_oversampling(oversampling)?;
+        Ok(())
     }
 
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn read_temp_adc(&mut self, field :u8) -> i32 {
+    fn read_temp_adc(&mut self, field :u8) -> Result<i32> {
         let base : u8 = 0x22 + 0x11 * field;
         // Big-endian!
-        let msb = self.read_u8(base + 0x00) as u32;
-        let lsb = self.read_u8(base + 0x01) as u32;
-        let xlsb = self.read_u8(base + 0x02) as u32;
+        let msb = self.read_u8(base + 0x00)? as u32;
+        let lsb = self.read_u8(base + 0x01)? as u32;
+        let xlsb = self.read_u8(base + 0x02)? as u32;
 
         let adc = ((msb << 12) | (lsb << 4) | (xlsb >> 4)) as i32;
 //        println!("temp_adc {:?}", adc);
-        adc
+        Ok(adc)
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn read_press_adc(&mut self, field :u8) -> i32 {
+    fn read_press_adc(&mut self, field :u8) -> Result<i32> {
         let base : u8 = 0x1F + 0x11 * field;
         // Big-endian!
-        let msb = self.read_u8(base + 0x00) as u32;
-        let lsb = self.read_u8(base + 0x01) as u32;
-        let xlsb = self.read_u8(base + 0x02) as u32;
+        let msb = self.read_u8(base + 0x00)? as u32;
+        let lsb = self.read_u8(base + 0x01)? as u32;
+        let xlsb = self.read_u8(base + 0x02)? as u32;
 
         let adc = ((msb << 12) | (lsb << 4) | (xlsb >> 4)) as i32;
 //        println!("press_adc {:?}", adc);
-        adc
+        Ok(adc)
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn read_humd_adc(&mut self, field :u8) -> u16 {
+    fn read_humd_adc(&mut self, field :u8) -> Result<u16> {
         let base : u8 = 0x25 + 0x11 * field;
         // Big-endian!
-        let adc = self.read_u16_be(base);
+        let adc = self.read_u16_be(base)?;
 //        println!("humd_adc {:?}", adc);
-        adc
+        Ok(adc)
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_temp(&mut self, field :u8) -> f64 {
+    pub fn read_temp(&mut self, field :u8) -> Result<f64> {
 
-        let adc = self.read_temp_adc(field) as f64;
+        let adc = self.read_temp_adc(field)? as f64;
 
         let temp = self.par_ta * adc * adc + self.par_tb * adc + self.par_tc;
 
@@ -465,7 +513,7 @@ impl Bme688 {
         }
 
         println!("Temperature is {:.2} C", temp);
-        temp
+        Ok(temp)
     }
 
 
@@ -508,23 +556,23 @@ impl Bme688 {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_press(&mut self, field: u8) -> f64 {
+    pub fn read_press(&mut self, field: u8) -> Result<f64> {
 
-        let adc = self.read_press_adc(field);
+        let adc = self.read_press_adc(field)?;
 
         let comp = (((1048576 - adc) as i64 - self.par_pvar2) as f64) / self.par_pvar1;
 
         let pressure = comp * comp * comp * self.par_pa + comp * comp * self.par_pb + comp * self.par_pc + self.par_pd;
 
         println!("Pressure {:.0} millibars", pressure + 30_f64);
-        pressure as f64
+        Ok(pressure as f64)
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_humd(&mut self, field: u8) -> f64 {
+    pub fn read_humd(&mut self, field: u8) -> Result<f64> {
 
-        let adc = self.read_humd_adc(field) as i32;
+        let adc = self.read_humd_adc(field)? as i32;
 
         // Becomes
         // var1 = humd_adc - var3;
@@ -535,29 +583,30 @@ impl Bme688 {
         let humdity = var2 + self.par_hvar5 * var2 * var2;
 
         println!("Humdity {:.2}%", humdity);
-        humdity
+        Ok(humdity)
     }
 
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn force(&mut self) {
+    pub fn force(&mut self) -> Result<()> {
         // Write Humdity oversampling
 
-        self.write_u8(0x72, self.hum_oversampling);
+        self.write_u8(0x72, self.hum_oversampling)?;
 
         // Write Pressure & temperature oversampling
         let tmp = (self.temp_oversampling << 5) | (self.pres_oversampling << 2);
-        self.write_u8(0x74, tmp);
+        self.write_u8(0x74, tmp)?;
 
-        self.write_u8(0x74, tmp | 1);
+        self.write_u8(0x74, tmp | 1)?;
 
         loop {
-            let mode = self.read_u8(0x74) & 0x03;
+            let mode = self.read_u8(0x74)? & 0x03;
             if mode == 0 {
                 break;
             }
         }
+        Ok(())
     }
 }
 
