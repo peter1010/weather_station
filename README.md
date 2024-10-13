@@ -13,7 +13,6 @@ Weather station based on raspberry pi(s) and an arduino(s)
   - Solar?
   - Temperature
   - Humdity
-  - Pressure?
 
 
 # Indoor...
@@ -55,6 +54,43 @@ Note, the name was discovered by running the command *udevadmin info -a /dev/i2c
 4. Build the rust project ....
 
 # Outdoor
+
+## Temperature and humdity
+
+Using SHT32 module connected to Raspberry pi gpio
+
+1. Decide which pins to use on raspberry pi for the i2c interface.
+
+For my outdoor Pi I can use the standard I2C interface
+
+> dtparam i2c=on
+
+Note, the bus is set to 1. Adjust if necessary
+
+2. Check i2c-dev module is loaded
+
+For me this was not auto-loaded, so the module i2c-dev had to
+be added to list of modules to load like so:
+
+Create and add *i2c_dev* to */etc/modules-load.d/sensors.conf*
+
+After a reboot the devices */dev/ic2-** should now appear. The * is the i2c bus number
+
+3. Update udev rules
+
+I wanted to create a symbol link */dev/i2c_sht31* with right permissions in dev. To do this
+requires a udev rule. Create a file e.g. */etc/udev/rules.d/99_my.rules*
+
+Add the following line.
+
+> SUBSYSTEM=="i2c-dev", ACTION=="add", ATTR{name}=="bcm2835 (i2c@7e804000)", SYMLINK+= "i2c-sht31", MODE="666"
+
+
+Note, the name was discovered by running the command *udevadmin info -a /dev/i2c-4*
+
+4. Build the rust project ....
+
+
 
 ## Wind
 
