@@ -13,14 +13,6 @@ pub struct Bme688Error {
 
 pub type Result<T> = std::result::Result<T, Bme688Error>;
 
-//----------------------------------------------------------------------------------------------------------------------------------
-//impl From<io::Error> for Bme688Error {
-//    fn from(error: io::Error) -> Bme688Error {
-//        Bme688Error {
-//            error : format!("IO Error {}", error)
-//        }
-//    }
-//}
 
 //----------------------------------------------------------------------------------------------------------------------------------
 impl From<LinuxI2CError> for Bme688Error {
@@ -500,7 +492,7 @@ impl Bme688 {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_temp(&mut self, field :u8) -> Result<f64> {
+    pub fn read_temp(&mut self, field :u8) -> Result<f32> {
 
         let adc = self.read_temp_adc(field)? as f64;
 
@@ -513,7 +505,7 @@ impl Bme688 {
         }
 
         println!("Temperature is {:.2} C", temp);
-        Ok(temp)
+        Ok(temp as f32)
     }
 
 
@@ -556,7 +548,7 @@ impl Bme688 {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_press(&mut self, field: u8) -> Result<f64> {
+    pub fn read_press(&mut self, field: u8) -> Result<f32> {
 
         let adc = self.read_press_adc(field)?;
 
@@ -565,12 +557,12 @@ impl Bme688 {
         let pressure = comp * comp * comp * self.par_pa + comp * comp * self.par_pb + comp * self.par_pc + self.par_pd;
 
         println!("Pressure {:.0} millibars", pressure + 30_f64);
-        Ok(pressure as f64)
+        Ok(pressure as f32)
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_humd(&mut self, field: u8) -> Result<f64> {
+    pub fn read_humd(&mut self, field: u8) -> Result<f32> {
 
         let adc = self.read_humd_adc(field)? as i32;
 
@@ -583,7 +575,7 @@ impl Bme688 {
         let humdity = var2 + self.par_hvar5 * var2 * var2;
 
         println!("Humdity {:.2}%", humdity);
-        Ok(humdity)
+        Ok(humdity as f32)
     }
 
 
