@@ -94,6 +94,7 @@ fn create_temp_sensor(config : &Table) -> Sht31 {
     Sht31::new(dev_name).unwrap()
 }
 
+
 //----------------------------------------------------------------------------------------------------------------------------------
 async fn read_temp(sensor : &mut Sht31) -> sht31::Summary {
     // Start sample..

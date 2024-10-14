@@ -48,6 +48,21 @@ fn create_sensor(config : &Table) -> bme688::Result<bme688::Bme688> {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
+async fn read_sensor(sensor : &mut bme688::Bme688) -> bme688::Summary {
+    // Start sample..
+    sensor.one_shot().unwrap();
+    loop {
+        sleep(Duration::from_secs(1)).await;
+        if sensor.is_ready().unwrap() {
+            break;
+        }
+    }
+    sensor.sample().unwrap()
+}
+
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
 fn create_ticker(config : &Table) -> clock::Clock {
     let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
     clock::Clock::new(period * 60)
@@ -100,13 +115,14 @@ fn main() {
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();
         println!("Tick");
-
-        sensor.force().unwrap();
-
-        let temp = sensor.read_temp(0).unwrap();
-        let press = sensor.read_press(0).unwrap();
-        let humd = sensor.read_humd(0).unwrap();
         let unix_time = ticker.get_nearest_tick();
+
+        let measurement = rt.block_on(read_sensor(&mut sensor));
+        println!("{}", measurement);
+
+        let temp = measurement.get_temperature();
+        let humd = measurement.get_humidity();
+        let press = measurement.get_pressure();
 
         let query = format!("INSERT INTO {} VALUES ({},{},{},{});", db_table, unix_time, temp, humd, press);
 

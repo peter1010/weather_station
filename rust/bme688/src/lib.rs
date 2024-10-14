@@ -41,6 +41,44 @@ impl fmt::Debug for Bme688Error {
     }
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+pub struct Summary {
+    temperature : f32,
+    humidity : f32,
+    pressure : f32
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl Summary {
+    pub fn new(temp: f32, humd : f32, press : f32) -> Self {
+        Self {
+            temperature : temp,
+            humidity : humd,
+            pressure : press
+        }
+    }
+
+    pub fn get_temperature(&self) -> f32 {
+        self.temperature
+    }
+
+    pub fn get_humidity(&self) -> f32 {
+        self.humidity
+    }
+
+    pub fn get_pressure(&self) -> f32 {
+        self.pressure
+    }
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl fmt::Display for Summary {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:.1}C {:.1}% {:.0} millibars", self.temperature, self.humidity, self.pressure)
+    }
+}
+
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -492,7 +530,7 @@ impl Bme688 {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_temp(&mut self, field :u8) -> Result<f32> {
+    fn read_temp(&mut self, field :u8) -> Result<f32> {
 
         let adc = self.read_temp_adc(field)? as f64;
 
@@ -504,7 +542,7 @@ impl Bme688 {
             self.cache_humd_temp_vars();
         }
 
-        println!("Temperature is {:.2} C", temp);
+        // println!("Temperature is {:.2} C", temp);
         Ok(temp as f32)
     }
 
@@ -548,7 +586,7 @@ impl Bme688 {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_press(&mut self, field: u8) -> Result<f32> {
+    fn read_press(&mut self, field: u8) -> Result<f32> {
 
         let adc = self.read_press_adc(field)?;
 
@@ -556,13 +594,14 @@ impl Bme688 {
 
         let pressure = comp * comp * comp * self.par_pa + comp * comp * self.par_pb + comp * self.par_pc + self.par_pd;
 
-        println!("Pressure {:.0} millibars", pressure + 30_f64);
+        let pressure = pressure + 28_f64;
+        // println!("Pressure {:.0} millibars", pressure);
         Ok(pressure as f32)
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn read_humd(&mut self, field: u8) -> Result<f32> {
+    fn read_humd(&mut self, field: u8) -> Result<f32> {
 
         let adc = self.read_humd_adc(field)? as i32;
 
@@ -574,14 +613,21 @@ impl Bme688 {
         let var2 = var1 * self.par_hvar4;
         let humdity = var2 + self.par_hvar5 * var2 * var2;
 
-        println!("Humdity {:.2}%", humdity);
+        // println!("Humdity {:.2}%", humdity);
         Ok(humdity as f32)
     }
 
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn sample(&mut self) -> Result<Summary> {
+        let temp = self.read_temp(0)?;
+        let press = self.read_press(0)?;
+        let humd = self.read_humd(0)?;
+        Ok(Summary::new(temp, humd, press))
+    }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn force(&mut self) -> Result<()> {
+    pub fn one_shot(&mut self) -> Result<()> {
         // Write Humdity oversampling
 
         self.write_u8(0x72, self.hum_oversampling)?;
@@ -591,14 +637,49 @@ impl Bme688 {
         self.write_u8(0x74, tmp)?;
 
         self.write_u8(0x74, tmp | 1)?;
+        Ok(())
+    }
 
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn is_ready(&mut self) -> Result<bool> {
+        let mode = self.read_u8(0x74)? & 0x03;
+        Ok(if mode == 0 {
+            true
+        } else {
+            false
+        })
+    }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn read_temperature() {
+        let mut sensor = Bme688::new("/dev/i2c-bme688").unwrap();
+
+        sensor.cache_params().unwrap();
+
+        sensor.set_humdity_oversampling(16).unwrap();
+        sensor.set_pressure_oversampling(16).unwrap();
+        sensor.set_temperature_oversampling(16).unwrap();
+
+
+        sensor.one_shot().unwrap();
         loop {
-            let mode = self.read_u8(0x74)? & 0x03;
-            if mode == 0 {
+            thread::sleep(Duration::from_secs(1));
+            if sensor.is_ready().unwrap() {
                 break;
             }
         }
-        Ok(())
+        let summary = sensor.sample().unwrap();
+
+        println!("{}", summary);
     }
 }
 
