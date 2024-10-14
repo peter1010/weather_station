@@ -7,11 +7,13 @@ use tokio::time::sleep;
 use tokio::runtime::Runtime;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use chrono::DateTime;
 
 use clock;
 use listener::Listener;
 
 use crate::wind::Wind;
+use sht31::{self, Sht31};
 
 mod stats;
 mod wind;
@@ -46,7 +48,9 @@ fn create_db_connection(config : &Table)-> (Connection, String) {
     let db_table = config["outdoor"]["db_table"].as_str().unwrap();
     println!("Creating/using db table {}", db_table);
 
-    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, max_speed REAL, ave_speed REAL, min_speed REAL,
+    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL,
+            max_speed REAL, ave_speed REAL, min_speed REAL,
+            temperature REAL, humidity REAL, precipitation REAL, solar REAL,
             PRIMARY KEY(unix_time));", db_table);
     {
         let conn = db_connection.lock().unwrap();
@@ -55,14 +59,47 @@ fn create_db_connection(config : &Table)-> (Connection, String) {
     (db_connection, String::from(db_table))
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+fn send_to_database(db_connection : &Connection, db_table : &str, unix_time : i64, wind : stats::Summary, temp : sht31::Summary) {
+    let dt = DateTime::from_timestamp(unix_time, 0).expect("invalid timestamp");
+    println!("{} {} {}", dt, wind, temp);
+
+    let query = format!("INSERT INTO {} VALUES ({},{},{},{},{},{},0.0,0.0);",
+            db_table, unix_time, wind.get_max(), wind.get_average(), wind.get_min(),
+            temp.get_temperature(), temp.get_humidity());
+    println!("{}", query);
+
+    {
+        let conn = db_connection.lock().unwrap();
+        (*conn).execute(query).unwrap();
+    }
+}
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_sensor(config : &Table) -> Arc<Wind> {
+fn create_wind_sensor(config : &Table) -> Arc<Wind> {
 
     let dev_name = config["outdoor"]["wind_dev"].as_str().unwrap();
     println!("Reading from {} for wind speeds", dev_name);
 
     Arc::new(Wind::new(dev_name))
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+fn create_temp_sensor(config : &Table) -> Sht31 {
+
+    let dev_name = config["outdoor"]["temp_dev"].as_str().unwrap();
+    println!("Reading from {} for temp/humidity speeds", dev_name);
+
+    Sht31::new(dev_name).unwrap()
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+async fn read_temp(sensor : &mut Sht31) -> sht31::Summary {
+    // Start sample..
+    sensor.one_shot().unwrap();
+    sleep(Duration::from_secs(1)).await;
+    sensor.sample().unwrap()
 }
 
 
@@ -90,7 +127,8 @@ fn main() -> Result<(), ()> {
 
     let (db_connection, db_table) = create_db_connection(&config);
 
-    let wind = create_sensor(&config);
+    let wind = create_wind_sensor(&config);
+    let mut temp = create_temp_sensor(&config);
 
     let ticker = create_ticker(&config);
 
@@ -105,11 +143,13 @@ fn main() -> Result<(), ()> {
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();
         println!("Tick");
-        let measurement = wind.sample(&ticker);
-        let query = measurement.unwrap().sql_insert_cmd("outdoor");
-        {
-            let conn = db_connection.lock().unwrap();
-            (*conn).execute(query).unwrap();
-        }
+        let unix_time = ticker.get_nearest_tick();
+
+        let wind_measurement = wind.sample().unwrap();
+
+        // Start sample..
+        let temp_measurement = rt.block_on(read_temp(&mut temp));
+
+        send_to_database(&db_connection, &db_table, unix_time, wind_measurement, temp_measurement);
     }
 }

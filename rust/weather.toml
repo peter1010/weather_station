@@ -9,6 +9,7 @@ db_table = "Indoor"
 host = "gandalf.home.arpa"
 
 [outdoor]
+temp_dev = "/dev/i2c-sht31"
 wind_dev = '/dev/ttyACM0'
 database = "outdoor.db"
 db_table = "Outdoor"

@@ -1,6 +1,5 @@
 use std::fmt;
-use chrono::DateTime;
-use clock;
+
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Accumulated {
@@ -10,12 +9,12 @@ pub struct Accumulated {
     num_of : u16,
 }
 
+
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Summary {
     max_value : f32,
     min_value : f32,
     ave_value : f32,
-    unix_time : i64
 }
 
 
@@ -23,29 +22,37 @@ pub struct Summary {
 impl Summary {
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn new(accum : &Accumulated, ticker : &clock::Clock) -> Summary {
+    pub fn new(accum : &Accumulated) -> Summary {
         Summary {
             max_value : accum.max_value,
             min_value : accum.min_value,
             ave_value : (accum.sum / (accum.num_of as f64)) as f32,
-            unix_time : ticker.get_nearest_tick()
         }
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn print(& self) {
-        let dt = DateTime::from_timestamp(self.unix_time, 0).expect("invalid timestamp");
-        println!("{} {} {} {}", dt, self.max_value, self.ave_value, self.min_value);
+    pub fn get_max(&self) -> f32 {
+        self.max_value
     }
 
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_min(&self) -> f32 {
+        self.min_value
+    }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn sql_insert_cmd(& self, table : &str) -> String {
-        format!("INSERT INTO {} VALUES ({},{},{},{});",
-            table, self.unix_time, self.max_value, self.ave_value, self.min_value)
+    pub fn get_average(&self) -> f32 {
+        self.ave_value
     }
 }
 
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl fmt::Display for Summary {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({:.1} - {:.1} -  {:.1}) m/s", self.min_value, self.ave_value, self.max_value)
+    }
+}
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -81,9 +88,8 @@ impl Accumulated {
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn sample(&mut self, ticker : &clock::Clock) -> Summary {
-        let result = Summary::new(&self, ticker);
-        result.print();
+    pub fn sample(&mut self) -> Summary {
+        let result = Summary::new(&self);
         self.num_of = 0;
         result
     }
@@ -115,7 +121,7 @@ mod tests {
         assert_eq!(acc.num_of, 3);
         assert_relative_eq!(acc.sum, 20.4 + 10.6 + 5.6, max_relative = 0.01);
 
-        let summary = acc.sample(&clock::Clock::new(60*15));
+        let summary = acc.sample();
         assert_eq!(acc.num_of, 0);
 
         assert_eq!(summary.max_value, 20.4);

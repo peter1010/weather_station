@@ -1,6 +1,5 @@
 use tokio::fs::File;
 use tokio::io::{self, AsyncBufReadExt};
-use clock;
 use crate::stats;
 use std::sync::{Mutex, PoisonError};
 use std::fmt;
@@ -75,9 +74,9 @@ impl Wind {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn sample(&self, ticker : &clock::Clock) -> Result<stats::Summary> {
+    pub fn sample(&self) -> Result<stats::Summary> {
         let mut data =self.speed.lock()?;
-        Ok((*data).sample(&ticker))
+        Ok((*data).sample())
     }
 
 

@@ -325,6 +325,7 @@ dependencies = [
  "chrono",
  "clock",
  "listener",
+ "sht31",
  "sqlite",
  "tokio",
  "toml",
