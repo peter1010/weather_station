@@ -20,6 +20,7 @@ mod scgi;
 
 use crate::sensor::Sensor;
 mod sensor;
+mod config;
 
 type Connection = Arc<Mutex<sqlite::Connection>>;
 
@@ -82,64 +83,26 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 }
 
 
-//----------------------------------------------------------------------------------------------------------------------------------
-fn get_address(config : &Table, section : &str) -> SocketAddr {
-    let host = config[section]["host"].as_str().unwrap();
-    let port = config["common"]["port"].as_integer().unwrap();
-    let mut addrs_iter = format!("{}:{}", host, port).to_socket_addrs().unwrap();
-    println!("{:?}", addrs_iter);
-    addrs_iter.next().unwrap()
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-fn create_db_connection(config : &Table)-> (Connection, String) {
-
-    let db_file = config["scgi"]["database"].as_str().unwrap();
-    println!("Opening database {}", db_file);
-    let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
-
-    let db_table = config["scgi"]["db_table"].as_str().unwrap();
-    println!("Creating/using db table {}", db_table);
-
-    let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL, temperature REAL, humidity REAL, pressure REAL, PRIMARY KEY(unix_time));", db_table);
-
-    {
-        let conn = db_connection.lock().unwrap();
-        (*conn).execute(query).unwrap();
-    }
-    (db_connection, String::from(db_table))
-}
-
-
-
 fn main() {
-    let path = std::path::Path::new("weather.toml");
-    let config_str = match std::fs::read_to_string(path) {
-        Ok(f) => f,
-        Err(e) => panic!("Failed to read config file {}", e)
-    };
-
-    let config: Table = config_str.parse().unwrap();
-//    dbg!(&config);
-
-    let indoor_sensor = Sensor::new(get_address(&config, "indoor"));
-
-    let outdoor_sensor = Sensor::new(get_address(&config, "outdoor"));
+    let config = config::Config::new();
 
     let rt = Runtime::new().unwrap();
 
-    let columns = rt.block_on(indoor_sensor.get_column_names());
-    println!("{:?}", columns);
-    let columns = rt.block_on(outdoor_sensor.get_column_names());
-    println!("{:?}", columns);
+    let indoor_sensor = rt.block_on(Sensor::new(&config, "indoor")).unwrap();
+
+    let outdoor_sensor = rt.block_on(Sensor::new(&config, "outdoor")).unwrap();
+
+    rt.block_on(indoor_sensor.collect()).unwrap();
+//    let columns = rt.block_on(indoor_sensor.get_column_names());
+//    println!("{:?}", columns);
+//    let columns2 = rt.block_on(outdoor_sensor.get_column_names());
+//    println!("{:?}", columns2);
+//    let columns = columns1 + columns2;
 
 
-
+/*
     let sock_name = config["scgi"]["sock_name"].as_str().unwrap();
     let _ = remove_file(sock_name);
-
-    let (db_connection, db_table) = create_db_connection(&config);
 
     let mut listener = Listener::new(sock_name, db_connection.clone());
 
@@ -154,4 +117,5 @@ fn main() {
         println!("Tick");
 
     }
+*/
 }
