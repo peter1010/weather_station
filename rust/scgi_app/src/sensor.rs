@@ -14,9 +14,9 @@ type Connection = Arc<Mutex<sqlite::Connection>>;
 pub struct Sensor {
     address : SocketAddr,
     columns : Vec<String>,
-    db_conn : Connection,
+    db_connection : Connection,
     db_table : String,
-    last_time : i64
+    last_collected_time : i64
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -24,20 +24,20 @@ impl Sensor {
 
     //------------------------------------------------------------------------------------------------------------------------------
     pub async fn new(config : &config::Config, name : &str) -> io::Result<Self> {
-        let addr = Self::get_address(&config, &name);
-        let columns = Self::get_column_names(&addr).await?;
-        let (db_conn, db_table) = Self::create_db_connection(&config, &columns, &name);
-        let last_time = Self::get_last_time(&config, &db_conn, &db_table);
+        let address = Self::get_address(&config, &name);
+        let columns = Self::get_column_names(&address).await?;
+        let (db_connection, db_table) = Self::create_db_connection(&config, &columns, &name);
+        let last_collected_time = Self::get_last_time(&db_connection, &db_table);
         Ok(Self {
-            address : addr,
+            address,
             columns,
-            db_conn,
+            db_connection,
             db_table,
-            last_time
+            last_collected_time
         })
     }
 
-    //----------------------------------------------------------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------------------------------------------------------
     fn get_address(config : &config::Config, name : &str) -> SocketAddr {
         let host = config.get_host(&name);
         let port = config.get_port();
@@ -74,7 +74,7 @@ impl Sensor {
     }
 
 
-    //----------------------------------------------------------------------------------------------------------------------------------
+    //------------------------------------------------------------------------------------------------------------------------------
     fn create_db_connection(config : &config::Config, columns : &Vec<String>, name : &str)-> (Connection, String) {
 
         let (db_file, db_table) = config.get_database(name);
@@ -97,36 +97,29 @@ impl Sensor {
     }
 
 
-    //----------------------------------------------------------------------------------------------------------------------------------
-    fn get_last_time(config : &config::Config, db_conn : &Connection, db_table : &str) -> i64 {
+    //------------------------------------------------------------------------------------------------------------------------------
+    fn get_last_time(db_connection : &Connection, db_table : &str) -> i64 {
         let query = format!("SELECT MAX(unix_time) from {};", db_table);
-        {
-            let conn = db_conn.lock().unwrap();
+        // println!("{}", query);
 
-            let statement = (*conn).prepare(query).unwrap();
+        let conn = db_connection.lock().unwrap();
 
-            for row in statement
-                .into_iter()
-                .map(|row| row.unwrap())
-            {
-                println!("{:?}", row);
-                let id = match row.try_read::<i64, _>("MAX(unix_time") {
-                     Ok(id) => id,
-                     Err(..) => 0
-                };
-                return id;
-//                response += &(format!("unix_time = {}", row.read::<i64, _>("unix_time")) + "\n");
-//                for col in self.column_names.as_ref().unwrap() {
-//                    response += &(format!("\t{} = {}", col, row.read::<f64, _>(col.as_str())) + "\n");
-//                }
-            }
-        }
-        0
+        let statement = (*conn).prepare(query).unwrap();
+
+        // Should only be one row!
+        let row = statement.into_iter().next().unwrap().unwrap();
+        // println!("{:?}", row);
+        let last_collected_time = match row.try_read::<i64, _>("MAX(unix_time)") {
+            Ok(value) => value,
+            Err(..) => 0
+        };
+        //println!("last_collected_time = {}", last_collected_time);
+        last_collected_time
     }
 
 
-    //----------------------------------------------------------------------------------------------------------------------------------
-    fn insert(&self, unix_time : i64, values : &HashMap::<String, f32>) {
+    //------------------------------------------------------------------------------------------------------------------------------
+    fn insert(&mut self, unix_time : i64, values : &HashMap::<String, f32>) {
 
         if values.len() == 0 {
             return;
@@ -137,17 +130,18 @@ impl Sensor {
         }
         query.push_str(");");
         {
-            let conn = self.db_conn.lock().unwrap();
+            let conn = self.db_connection.lock().unwrap();
             (*conn).execute(query).unwrap();
         }
+        self.last_collected_time = unix_time;
     }
 
 
     //----------------------------------------------------------------------------------------------------------------------------------
-    pub async fn collect(&self) -> io::Result<()>{
+    pub async fn collect(&mut self) -> io::Result<()>{
         let mut stream = BufReader::new(TcpStream::connect(self.address).await?);
 
-        stream.write_all(format!("{}\n", self.last_time).as_bytes()).await?;
+        stream.write_all(format!("{}\n", self.last_collected_time + 1).as_bytes()).await?;
 
         let mut values = HashMap::new();
         let mut line = String::new();

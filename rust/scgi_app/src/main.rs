@@ -76,6 +76,7 @@ fn drop_privs(sock_name: &str, uid_name : &str, gid_name : &str) {
 //    return server
 //}
 
+//----------------------------------------------------------------------------------------------------------------------------------
 async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
      let delay = ticker.secs_to_next_tick() + 60;
      sleep(Duration::from_secs(delay.into())).await;
@@ -83,39 +84,33 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
 fn main() {
     let config = config::Config::new();
 
     let rt = Runtime::new().unwrap();
 
-    let indoor_sensor = rt.block_on(Sensor::new(&config, "indoor")).unwrap();
+    let mut indoor_sensor = rt.block_on(Sensor::new(&config, "indoor")).unwrap();
 
-    let outdoor_sensor = rt.block_on(Sensor::new(&config, "outdoor")).unwrap();
+    let mut outdoor_sensor = rt.block_on(Sensor::new(&config, "outdoor")).unwrap();
 
     rt.block_on(indoor_sensor.collect()).unwrap();
-//    let columns = rt.block_on(indoor_sensor.get_column_names());
-//    println!("{:?}", columns);
-//    let columns2 = rt.block_on(outdoor_sensor.get_column_names());
-//    println!("{:?}", columns2);
-//    let columns = columns1 + columns2;
+    rt.block_on(outdoor_sensor.collect()).unwrap();
 
-
-/*
-    let sock_name = config["scgi"]["sock_name"].as_str().unwrap();
+    let sock_name = config.get_sock_name();
     let _ = remove_file(sock_name);
 
-    let mut listener = Listener::new(sock_name, db_connection.clone());
+//    let mut listener = Listener::new(sock_name, db_connection.clone());
 
+//    rt.spawn(async move { listener.task().await });
 
-    rt.spawn(async move { listener.task().await });
-
-    let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
+    let period = config.get_sample_period();
     let ticker = clock::Clock::new(period * 60);
 
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();
         println!("Tick");
-
+        rt.block_on(indoor_sensor.collect()).unwrap();
+        rt.block_on(outdoor_sensor.collect()).unwrap();
     }
-*/
 }

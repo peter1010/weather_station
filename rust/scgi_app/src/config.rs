@@ -42,6 +42,16 @@ impl Config {
         let db_table = self.config[name]["db_table"].as_str().unwrap();
         (db_file, db_table)
     }
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_sock_name(&self) -> &str {
+        self.config["scgi"]["sock_name"].as_str().unwrap()
+    }
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_sample_period(&self) -> i32 {
+        self.config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32
+    }
 }
 
 
