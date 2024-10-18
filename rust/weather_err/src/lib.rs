@@ -69,4 +69,13 @@ impl From<sqlite::Error> for WeatherError {
     }
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+impl From<toml::de::Error> for WeatherError {
+    fn from(error: toml::de::Error) -> Self {
+        Self {
+            error : format!("TOML Error {}", error)
+        }
+    }
+}
+
 

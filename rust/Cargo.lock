@@ -379,6 +379,7 @@ dependencies = [
  "sqlite",
  "tokio",
  "toml",
+ "weather_err",
 ]
 
 [[package]]
@@ -596,6 +597,7 @@ dependencies = [
  "i2cdev",
  "sqlite",
  "tokio",
+ "toml",
 ]
 
 [[package]]

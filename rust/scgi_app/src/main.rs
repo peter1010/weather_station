@@ -5,12 +5,10 @@ use std::os::unix::fs::chown;
 use std::os::unix::net::UnixListener;
 use std::io::{BufRead, Read, Write};
 use std::sync::{Arc, Mutex};
-use toml::Table;
 use tokio::runtime::Runtime;
 use tokio::time::sleep;
 use std::time::Duration;
 use std::net::{SocketAddr, ToSocketAddrs};
-use tokio::net::TcpStream;
 use tokio::io::{BufReader, AsyncWriteExt, AsyncBufReadExt, AsyncBufRead};
 use crate::scgi::Listener;
 
@@ -86,7 +84,7 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 
 //----------------------------------------------------------------------------------------------------------------------------------
 fn main() {
-    let config = config::Config::new();
+    let config = config::Config::new().unwrap();
 
     let rt = Runtime::new().unwrap();
 
@@ -97,14 +95,14 @@ fn main() {
     rt.block_on(indoor_sensor.collect()).unwrap();
     rt.block_on(outdoor_sensor.collect()).unwrap();
 
-    let sock_name = config.get_sock_name();
+    let sock_name = config.get_sock_name().unwrap();
     let _ = remove_file(sock_name);
 
 //    let mut listener = Listener::new(sock_name, db_connection.clone());
 
 //    rt.spawn(async move { listener.task().await });
 
-    let period = config.get_sample_period();
+    let period = config.get_sample_period().unwrap();
     let ticker = clock::Clock::new(period * 60);
 
     loop {

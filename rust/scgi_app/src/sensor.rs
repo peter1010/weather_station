@@ -39,8 +39,8 @@ impl Sensor {
 
     //------------------------------------------------------------------------------------------------------------------------------
     fn get_address(config : &config::Config, name : &str) -> SocketAddr {
-        let host = config.get_host(&name);
-        let port = config.get_port();
+        let host = config.get_host(&name).unwrap();
+        let port = config.get_port().unwrap();
 
         let mut addrs_iter = format!("{}:{}", host, port).to_socket_addrs().unwrap();
         println!("{:?}", addrs_iter);
@@ -77,7 +77,7 @@ impl Sensor {
     //------------------------------------------------------------------------------------------------------------------------------
     fn create_db_connection(config : &config::Config, columns : &Vec<String>, name : &str)-> (Connection, String) {
 
-        let (db_file, db_table) = config.get_database(name);
+        let (db_file, db_table) = config.get_database(name).unwrap();
         println!("Opening database {}", db_file);
 
         let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
