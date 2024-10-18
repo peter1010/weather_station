@@ -66,7 +66,7 @@ async fn read_sensor(sensor : &mut bme688::Bme688) -> bme688::Summary {
 //----------------------------------------------------------------------------------------------------------------------------------
 fn create_ticker(config : &Table) -> clock::Clock {
     let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
-    clock::Clock::new(period * 60)
+    clock::Clock::new(period * 60).unwrap()
 }
 
 

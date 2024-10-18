@@ -33,7 +33,7 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 /// Create a ticker
 fn create_ticker(config : &Table) -> clock::Clock {
     let period_mins = config["common"]["sample_period_in_mins"].as_integer().unwrap() as i32;
-    clock::Clock::new(period_mins * 60)
+    clock::Clock::new(period_mins * 60).unwrap()
 }
 
 
