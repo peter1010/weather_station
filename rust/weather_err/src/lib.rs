@@ -4,6 +4,7 @@ use tokio::io;
 use i2cdev::linux::LinuxI2CError;
 use sqlite;
 use std::num::{ParseIntError, ParseFloatError};
+use std::ffi::NulError;
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct WeatherError {
@@ -96,6 +97,16 @@ impl From<ParseFloatError> for WeatherError {
     fn from(error: ParseFloatError) -> Self {
         Self {
             error : format!("Parse to Float Error {}", error)
+        }
+    }
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl From<NulError> for WeatherError {
+    fn from(error: NulError) -> Self {
+        Self {
+            error : format!("Null Error {}", error)
         }
     }
 }

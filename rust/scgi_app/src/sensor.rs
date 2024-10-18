@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 use tokio::net::TcpStream;
-use tokio::io::{self, BufReader, AsyncWriteExt, AsyncBufReadExt};
+use tokio::io::{BufReader, AsyncWriteExt, AsyncBufReadExt};
 use weather_err::Result;
 
 use crate::config;
