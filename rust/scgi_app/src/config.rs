@@ -28,30 +28,30 @@ impl Config {
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_host(&self, name :&str) -> Option<&str> {
-        Some(self.config[name]["host"].as_str()?)
+    pub fn get_host(&self, name :&str) -> Result<&str> {
+        Ok(self.config[name]["host"].as_str().ok_or("No Host specified")?)
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_port(&self) -> Option<u16> {
-        Some(self.config["common"]["port"].as_integer()? as u16)
+    pub fn get_port(&self) -> Result<u16> {
+        Ok(self.config["common"]["port"].as_integer().ok_or("No Port specified")? as u16)
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_database(&self, name :&str) -> Option<(&str, &str)> {
-        let db_file = self.config[name]["database"].as_str()?;
-        let db_table = self.config[name]["db_table"].as_str()?;
-        Some((db_file, db_table))
+    pub fn get_database(&self, name :&str) -> Result<(&str, &str)> {
+        let db_file = self.config[name]["database"].as_str().ok_or("No DB  specified")?;
+        let db_table = self.config[name]["db_table"].as_str().ok_or("No DB table specified")?;
+        Ok((db_file, db_table))
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_sock_name(&self) -> Option<&str> {
-        Some(self.config["scgi"]["sock_name"].as_str()?)
+    pub fn get_sock_name(&self) -> Result<&str> {
+        Ok(self.config["scgi"]["sock_name"].as_str().ok_or("No valid sock name specified")?)
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_sample_period(&self) -> Option<i32> {
-        Some(self.config["common"]["sample_period_in_mins"].as_integer()? as i32)
+    pub fn get_sample_period(&self) -> Result<i32> {
+        Ok(self.config["common"]["sample_period_in_mins"].as_integer().ok_or("No valid Sample period specified")? as i32)
     }
 }
 

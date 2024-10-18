@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use tokio::net::TcpStream;
 use tokio::io::{self, BufReader, AsyncWriteExt, AsyncBufReadExt};
+use weather_err::Result;
 
 use crate::config;
 
@@ -23,11 +24,11 @@ pub struct Sensor {
 impl Sensor {
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub async fn new(config : &config::Config, name : &str) -> io::Result<Self> {
-        let address = Self::get_address(&config, &name);
+    pub async fn new(config : &config::Config, name : &str) -> Result<Self> {
+        let address = Self::get_address(&config, &name)?;
         let columns = Self::get_column_names(&address).await?;
-        let (db_connection, db_table) = Self::create_db_connection(&config, &columns, &name);
-        let last_collected_time = Self::get_last_time(&db_connection, &db_table);
+        let (db_connection, db_table) = Self::create_db_connection(&config, &columns, &name)?;
+        let last_collected_time = Self::get_last_time(&db_connection, &db_table)?;
         Ok(Self {
             address,
             columns,
@@ -38,18 +39,18 @@ impl Sensor {
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn get_address(config : &config::Config, name : &str) -> SocketAddr {
-        let host = config.get_host(&name).unwrap();
-        let port = config.get_port().unwrap();
+    fn get_address(config : &config::Config, name : &str) -> Result<SocketAddr> {
+        let host = config.get_host(&name)?;
+        let port = config.get_port()?;
 
-        let mut addrs_iter = format!("{}:{}", host, port).to_socket_addrs().unwrap();
+        let mut addrs_iter = format!("{}:{}", host, port).to_socket_addrs()?;
         println!("{:?}", addrs_iter);
-        addrs_iter.next().unwrap()
+        Ok(addrs_iter.next().ok_or("No IP Address found")?)
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub async fn get_column_names(addr : &SocketAddr) -> io::Result<Vec<String>> {
+    pub async fn get_column_names(addr : &SocketAddr) -> Result<Vec<String>> {
 
         let mut stream = BufReader::new(TcpStream::connect(addr).await?);
 
@@ -75,12 +76,12 @@ impl Sensor {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn create_db_connection(config : &config::Config, columns : &Vec<String>, name : &str)-> (Connection, String) {
+    fn create_db_connection(config : &config::Config, columns : &Vec<String>, name : &str)-> Result<(Connection, String)> {
 
-        let (db_file, db_table) = config.get_database(name).unwrap();
+        let (db_file, db_table) = config.get_database(name)?;
         println!("Opening database {}", db_file);
 
-        let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
+        let db_connection = Arc::new(Mutex::new(sqlite::open(db_file)?));
 
         println!("Creating/using db table {}", db_table);
 
@@ -90,31 +91,31 @@ impl Sensor {
         }
         query.push_str(", PRIMARY KEY(unix_time));");
         {
-            let conn = db_connection.lock().unwrap();
-            (*conn).execute(query).unwrap();
+            let conn = db_connection.lock()?;
+            (*conn).execute(query)?;
         }
-        (db_connection, String::from(db_table))
+        Ok((db_connection, String::from(db_table)))
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn get_last_time(db_connection : &Connection, db_table : &str) -> i64 {
+    fn get_last_time(db_connection : &Connection, db_table : &str) -> Result<i64> {
         let query = format!("SELECT MAX(unix_time) from {};", db_table);
         // println!("{}", query);
 
-        let conn = db_connection.lock().unwrap();
+        let conn = db_connection.lock()?;
 
-        let statement = (*conn).prepare(query).unwrap();
+        let statement = (*conn).prepare(query)?;
 
         // Should only be one row!
-        let row = statement.into_iter().next().unwrap().unwrap();
+        let row = statement.into_iter().next().unwrap()?;
         // println!("{:?}", row);
         let last_collected_time = match row.try_read::<i64, _>("MAX(unix_time)") {
             Ok(value) => value,
             Err(..) => 0
         };
         //println!("last_collected_time = {}", last_collected_time);
-        last_collected_time
+        Ok(last_collected_time)
     }
 
 
@@ -138,7 +139,7 @@ impl Sensor {
 
 
     //----------------------------------------------------------------------------------------------------------------------------------
-    pub async fn collect(&mut self) -> io::Result<()>{
+    pub async fn collect(&mut self) -> Result<()>{
         let mut stream = BufReader::new(TcpStream::connect(self.address).await?);
 
         stream.write_all(format!("{}\n", self.last_collected_time + 1).as_bytes()).await?;
@@ -157,13 +158,13 @@ impl Sensor {
                 break;
             }
             let mut tokens = line.split("=");
-            let name = String::from(tokens.next().unwrap().trim());
+            let name = String::from(tokens.next().ok_or("No name")?.trim());
             if name == "unix_time" {
                 self.insert(time, &values);
-                time = tokens.next().unwrap().trim().parse::<i64>().unwrap();
+                time = tokens.next().ok_or("No value")?.trim().parse::<i64>()?;
                 values.clear();
             } else {
-                let value = tokens.next().unwrap().trim().parse::<f32>().unwrap();
+                let value = tokens.next().ok_or("No value")?.trim().parse::<f32>()?;
 
                 println!("{} => {}", name, value);
                 values.insert(name, value);
@@ -175,8 +176,5 @@ impl Sensor {
         Ok(())
     }
 }
-
-
-
 
 

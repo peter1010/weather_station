@@ -3,6 +3,7 @@ use std::sync::PoisonError;
 use tokio::io;
 use i2cdev::linux::LinuxI2CError;
 use sqlite;
+use std::num::{ParseIntError, ParseFloatError};
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct WeatherError {
@@ -69,11 +70,32 @@ impl From<sqlite::Error> for WeatherError {
     }
 }
 
+
 //----------------------------------------------------------------------------------------------------------------------------------
 impl From<toml::de::Error> for WeatherError {
     fn from(error: toml::de::Error) -> Self {
         Self {
             error : format!("TOML Error {}", error)
+        }
+    }
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl From<ParseIntError> for WeatherError {
+    fn from(error: ParseIntError) -> Self {
+        Self {
+            error : format!("Parse to Int Error {}", error)
+        }
+    }
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+impl From<ParseFloatError> for WeatherError {
+    fn from(error: ParseFloatError) -> Self {
+        Self {
+            error : format!("Parse to Float Error {}", error)
         }
     }
 }
