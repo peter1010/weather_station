@@ -1,51 +1,9 @@
 use tokio::fs::File;
 use tokio::io::{self, AsyncBufReadExt};
 use crate::stats;
-use std::sync::{Mutex, PoisonError};
-use std::fmt;
+use std::sync::Mutex;
 
-
-//----------------------------------------------------------------------------------------------------------------------------------
-pub struct WindError {
-    error : String
-}
-
-type Result<T> = std::result::Result<T, WindError>;
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<io::Error> for WindError {
-    fn from(error: io::Error) -> WindError {
-        WindError {
-            error : format!("IO Error {}", error)
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<&str> for WindError {
-    fn from(error : &str) -> WindError {
-        WindError {
-            error : String::from(error)
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl<T> From<PoisonError<T>> for WindError {
-    fn from(error: PoisonError<T>) -> WindError {
-        WindError {
-            error : format!("Mutex Error {}", error)
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl fmt::Debug for WindError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.error)
-    }
-}
-
+use weather_err::Result;
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Wind {

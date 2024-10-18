@@ -1,44 +1,10 @@
-extern crate i2cdev;
-
-use i2cdev::linux::{LinuxI2CDevice, LinuxI2CError};
+use i2cdev::linux::LinuxI2CDevice;
 use i2cdev::core::*;
 use std::fmt;
+use weather_err::{Result, WeatherError};
 
 const SHT31_ADDR : u16 = 0x44;
 
-//----------------------------------------------------------------------------------------------------------------------------------
-pub struct Sht31Error {
-    error : String
-}
-
-pub type Result<T> = std::result::Result<T, Sht31Error>;
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<LinuxI2CError> for Sht31Error {
-    fn from(error: LinuxI2CError) -> Sht31Error {
-        Sht31Error {
-            error : format!("I2C Error {}", error)
-        }
-    }
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<&str> for Sht31Error {
-    fn from(error : &str) -> Sht31Error {
-        Sht31Error {
-            error : String::from(error)
-        }
-    }
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl fmt::Debug for Sht31Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.error)
-    }
-}
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -114,11 +80,11 @@ impl Sht31 {
     fn process_resp(&self, resp : &[u8]) -> Result<Summary> {
         let calc_crc = Self::crc(&resp[0..2]);
         if calc_crc != resp[2] {
-            return Err(Sht31Error::from("Invalid Checksum"));
+            return Err(WeatherError::from("Invalid Checksum"));
         }
         let calc_crc = Self::crc(&resp[3..5]);
         if calc_crc != resp[5] {
-            return Err(Sht31Error::from("Invalid Checksum"));
+            return Err(WeatherError::from("Invalid Checksum"));
         }
         let adc = ((resp[0] as u16) << 8) | (resp[1] as u16);
         let temp = -45.0 + 175.0 * (adc as f32) / 65535.0;

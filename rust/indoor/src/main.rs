@@ -8,11 +8,12 @@ use sqlite;
 use bme688;
 use clock;
 use listener::Listener;
+use weather_err::Result;
 
 type Connection = Arc<Mutex<sqlite::Connection>>;
 
 //----------------------------------------------------------------------------------------------------------------------------------
-async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
+async fn wait_tick(ticker : &clock::Clock) -> Result<()> {
      let delay_seconds = ticker.secs_to_next_tick();
      sleep(Duration::from_secs(delay_seconds.into())).await;
      Ok(())
@@ -30,7 +31,7 @@ fn launch_listener(config : &Table, rt : &Runtime, db_connection : Connection)
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_sensor(config : &Table) -> bme688::Result<bme688::Bme688> {
+fn create_sensor(config : &Table) -> Result<bme688::Bme688> {
 
     let dev_name = config["indoor"]["dev"].as_str().unwrap();
     println!("Reading from {} for indoor sensor", dev_name);

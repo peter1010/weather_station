@@ -79,6 +79,7 @@ name = "bme688"
 version = "0.1.0"
 dependencies = [
  "i2cdev",
+ "weather_err",
 ]
 
 [[package]]
@@ -216,11 +217,11 @@ version = "0.1.0"
 dependencies = [
  "bme688",
  "clock",
- "i2cdev",
  "listener",
  "sqlite",
  "tokio",
  "toml",
+ "weather_err",
 ]
 
 [[package]]
@@ -247,6 +248,7 @@ dependencies = [
  "clock",
  "sqlite",
  "tokio",
+ "weather_err",
 ]
 
 [[package]]
@@ -329,6 +331,7 @@ dependencies = [
  "sqlite",
  "tokio",
  "toml",
+ "weather_err",
 ]
 
 [[package]]
@@ -418,6 +421,7 @@ name = "sht31"
 version = "0.1.0"
 dependencies = [
  "i2cdev",
+ "weather_err",
 ]
 
 [[package]]
@@ -584,6 +588,15 @@ name = "wasm-bindgen-shared"
 version = "0.2.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c62a0a307cb4a311d3a07867860911ca130c3494e8c2719593806c08bc5d0484"
+
+[[package]]
+name = "weather_err"
+version = "0.1.0"
+dependencies = [
+ "i2cdev",
+ "sqlite",
+ "tokio",
+]
 
 [[package]]
 name = "windows-core"

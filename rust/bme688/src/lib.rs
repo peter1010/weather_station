@@ -1,45 +1,11 @@
-extern crate i2cdev;
-
-use i2cdev::linux::{LinuxI2CDevice, LinuxI2CError};
+use i2cdev::linux::LinuxI2CDevice;
 use i2cdev::core::*;
 use std::fmt;
+use weather_err::{Result, WeatherError};
 
 const BME688_ADDR : u16 = 0x76;
 
-//----------------------------------------------------------------------------------------------------------------------------------
-pub struct Bme688Error {
-    error : String
-}
 
-pub type Result<T> = std::result::Result<T, Bme688Error>;
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<LinuxI2CError> for Bme688Error {
-    fn from(error: LinuxI2CError) -> Bme688Error {
-        Bme688Error {
-            error : format!("I2C Error {}", error)
-        }
-    }
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<&str> for Bme688Error {
-    fn from(error : &str) -> Bme688Error {
-        Bme688Error {
-            error : String::from(error)
-        }
-    }
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl fmt::Debug for Bme688Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.error)
-    }
-}
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Summary {
@@ -145,7 +111,7 @@ fn calc_oversampling(reqd : u8) -> Result<u8> {
     } else if reqd == 16 {
         result =  5; // 8x oversampling
     } else {
-        return Err(Bme688Error::from("Conversion Error"));
+        return Err(WeatherError::from("Conversion Error"));
     }
     Ok(result)
 }

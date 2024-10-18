@@ -4,61 +4,9 @@
 
 use tokio::net::TcpListener;
 use sqlite;
-use tokio::io::{self,AsyncBufReadExt,AsyncWriteExt, BufReader};
-use std::sync::{Arc, Mutex, PoisonError};
-use std::fmt;
-
-//----------------------------------------------------------------------------------------------------------------------------------
-pub struct ListenerError {
-    error : String
-}
-
-type Result<T> = std::result::Result<T, ListenerError>;
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<io::Error> for ListenerError {
-    fn from(error: io::Error) -> ListenerError {
-        ListenerError {
-            error : format!("IO Error {}", error)
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<&str> for ListenerError {
-    fn from(error : &str) -> ListenerError {
-        ListenerError {
-            error : String::from(error)
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl<T> From<PoisonError<T>> for ListenerError {
-    fn from(error: PoisonError<T>) -> ListenerError {
-        ListenerError {
-            error : format!("Mutex Error {}", error)
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<sqlite::Error> for ListenerError {
-    fn from(error: sqlite::Error) -> ListenerError {
-        ListenerError {
-            error : format!("SQL Error {}", error)
-        }
-    }
-}
-
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl fmt::Debug for ListenerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.error)
-    }
-}
+use tokio::io::{AsyncBufReadExt,AsyncWriteExt, BufReader};
+use std::sync::{Arc, Mutex};
+use weather_err::{Result, WeatherError};
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -94,7 +42,7 @@ impl Listener {
             self.table_name = Some(String::from(row?.read::<&str,_>("name")));
             return Ok(());
         }
-        Err(ListenerError::from("No table"))
+        Err(WeatherError::from("No table"))
     }
 
 
