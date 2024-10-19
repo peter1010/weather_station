@@ -71,11 +71,30 @@ impl Config {
         sock_name
     }
 
+
     //------------------------------------------------------------------------------------------------------------------------------
     pub fn get_sample_period(&self) -> u32 {
         match self.config["common"]["sample_period_in_mins"].as_integer() {
             Some(period) => period as u32,
             None => panic!("No Sample period specified in config file")
+        }
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_dev_name(&self, name : &str) -> &str {
+        match self.config[name]["dev"].as_str() {
+            Some(dev) => dev,
+            None => panic!("No dev specified for {} in config file", name)
+        }
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_wind_dev_name(&self) -> &str {
+        match self.config["outdoor"]["wind_dev"].as_str() {
+            Some(dev) => dev,
+            None => panic!("No wind dev specified for outdoor in config file")
         }
     }
 }

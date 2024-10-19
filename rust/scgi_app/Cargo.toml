@@ -10,3 +10,4 @@ sqlite = { workspace = true }
 tokio = { version = "1.40.0", features = ["fs", "io-util", "rt", "rt-multi-thread", "time", "net"] }
 clock = { path = "../clock" }
 weather_err = { path = "../weather_err" }
+config = { path = "../config" }

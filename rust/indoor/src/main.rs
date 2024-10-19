@@ -1,9 +1,9 @@
-use toml::Table;
 use tokio::runtime::Runtime;
 use tokio::time::sleep;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use sqlite;
+use config;
 
 use bme688;
 use clock;
@@ -21,22 +21,18 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<()> {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn launch_listener(config : &Table, rt : &Runtime, db_connection : Connection)
+fn launch_listener(config : &config::Config, rt : &Runtime, db_connection : Connection)
 {
-    let port = config["common"]["port"].as_integer().unwrap() as u16;
-    let mut listener = Listener::new(port, db_connection);
+    let mut listener = Listener::new(config.get_port(), db_connection);
 
     rt.spawn(async move { listener.task().await });
 }
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_sensor(config : &Table) -> Result<bme688::Bme688> {
+fn create_sensor(config : &config::Config) -> Result<bme688::Bme688> {
 
-    let dev_name = config["indoor"]["dev"].as_str().unwrap();
-    println!("Reading from {} for indoor sensor", dev_name);
-
-    let mut sensor = bme688::Bme688::new(dev_name)?;
+    let mut sensor = bme688::Bme688::new(config.get_dev_name("indoor"))?;
 
     sensor.cache_params()?;
 
@@ -64,20 +60,19 @@ async fn read_sensor(sensor : &mut bme688::Bme688) -> bme688::Summary {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_ticker(config : &Table) -> clock::Clock {
-    let period = config["common"]["sample_period_in_mins"].as_integer().unwrap() as u32;
-    clock::Clock::new(period * 60).unwrap()
+fn create_ticker(config : &config::Config) -> clock::Clock {
+    clock::Clock::new(config.get_sample_period() * 60).unwrap()
 }
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_db_connection(config : &Table)-> (Connection, String) {
+fn create_db_connection(config : &config::Config)-> (Connection, String) {
 
-    let db_file = config["indoor"]["database"].as_str().unwrap();
+    let (db_file, db_table) = config.get_database("indoor");
+
     println!("Opening database {}", db_file);
     let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
 
-    let db_table = config["indoor"]["db_table"].as_str().unwrap();
     println!("Creating/using db table {}", db_table);
 
     let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL,
@@ -94,14 +89,7 @@ fn create_db_connection(config : &Table)-> (Connection, String) {
 //----------------------------------------------------------------------------------------------------------------------------------
 fn main() {
 
-    let path = std::path::Path::new("weather.toml");
-    let config_str = match std::fs::read_to_string(path) {
-        Ok(f) => f,
-        Err(e) => panic!("Failed to read config file {}", e)
-    };
-
-    let config: Table = config_str.parse().unwrap();
-    // dbg!(&config);
+    let config = config::Config::new();
 
     let mut sensor = create_sensor(&config).unwrap();
 

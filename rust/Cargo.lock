@@ -138,6 +138,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "config"
+version = "0.1.0"
+dependencies = [
+ "toml",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -218,10 +225,10 @@ version = "0.1.0"
 dependencies = [
  "bme688",
  "clock",
+ "config",
  "listener",
  "sqlite",
  "tokio",
- "toml",
  "weather_err",
 ]
 
@@ -327,11 +334,11 @@ dependencies = [
  "approx",
  "chrono",
  "clock",
+ "config",
  "listener",
  "sht31",
  "sqlite",
  "tokio",
- "toml",
  "weather_err",
 ]
 
@@ -376,6 +383,7 @@ name = "scgi_app"
 version = "0.1.0"
 dependencies = [
  "clock",
+ "config",
  "libc",
  "sqlite",
  "tokio",

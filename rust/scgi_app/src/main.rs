@@ -15,7 +15,7 @@ mod scgi;
 
 use crate::sensor::Sensor;
 mod sensor;
-mod config;
+use config;
 mod drop_privs;
 
 type Connection = Arc<Mutex<sqlite::Connection>>;

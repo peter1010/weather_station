@@ -9,6 +9,6 @@ tokio = { version = "1.37.0", features = ["fs", "io-util", "rt", "rt-multi-threa
 bme688 = { path = "../bme688" }
 clock = { path = "../clock" }
 listener = { path = "../listener" }
-toml = { workspace = true }
 sqlite = { workspace = true }
 weather_err = { path = "../weather_err" }
+config = { path = "../config" }

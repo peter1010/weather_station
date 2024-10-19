@@ -10,6 +10,6 @@ clock = { path = "../clock" }
 listener = { path = "../listener" }
 sht31 = { path = "../sht31" }
 weather_err = { path = "../weather_err" }
-toml = { workspace = true }
 sqlite = { workspace = true }
 chrono = { workspace = true }
+config = { path = "../config" }

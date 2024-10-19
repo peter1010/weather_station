@@ -2,12 +2,12 @@
 /// Reading of Outdoor sensors
 ///
 
-use toml::Table;
 use tokio::time::sleep;
 use tokio::runtime::Runtime;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use chrono::DateTime;
+use config;
 
 use clock;
 use listener::Listener;
@@ -31,21 +31,18 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 
 //----------------------------------------------------------------------------------------------------------------------------------
 /// Create a ticker
-fn create_ticker(config : &Table) -> clock::Clock {
-    let period_mins = config["common"]["sample_period_in_mins"].as_integer().unwrap() as u32;
-    clock::Clock::new(period_mins * 60).unwrap()
+fn create_ticker(config : &config::Config) -> clock::Clock {
+    clock::Clock::new(config.get_sample_period() * 60).unwrap()
 }
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
 /// Create a database connection
-fn create_db_connection(config : &Table)-> (Connection, String) {
+fn create_db_connection(config : &config::Config)-> (Connection, String) {
 
-    let db_file = config["outdoor"]["database"].as_str().unwrap();
+    let (db_file, db_table) = config.get_database("outdoor");
     println!("Opening database {}", db_file);
     let db_connection = Arc::new(Mutex::new(sqlite::open(db_file).unwrap()));
-
-    let db_table = config["outdoor"]["db_table"].as_str().unwrap();
     println!("Creating/using db table {}", db_table);
 
     let query = format!("CREATE TABLE IF NOT EXISTS {} (unix_time INT NOT NULL,
@@ -76,9 +73,9 @@ fn send_to_database(db_connection : &Connection, db_table : &str, unix_time : i6
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_wind_sensor(config : &Table) -> Arc<Wind> {
+fn create_wind_sensor(config : &config::Config) -> Arc<Wind> {
 
-    let dev_name = config["outdoor"]["wind_dev"].as_str().unwrap();
+    let dev_name = config.get_wind_dev_name();
     println!("Reading from {} for wind speeds", dev_name);
 
     Arc::new(Wind::new(dev_name))
@@ -86,9 +83,9 @@ fn create_wind_sensor(config : &Table) -> Arc<Wind> {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_temp_sensor(config : &Table) -> Sht31 {
+fn create_temp_sensor(config : &config::Config) -> Sht31 {
 
-    let dev_name = config["outdoor"]["temp_dev"].as_str().unwrap();
+    let dev_name = config.get_dev_name("outdoor");
     println!("Reading from {} for temp/humidity speeds", dev_name);
 
     Sht31::new(dev_name).unwrap()
@@ -105,10 +102,9 @@ async fn read_temp(sensor : &mut Sht31) -> sht31::Summary {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn launch_listener(config : &Table, rt : &Runtime, db_connection : Connection)
+fn launch_listener(config : &config::Config, rt : &Runtime, db_connection : Connection)
 {
-    let port = config["common"]["port"].as_integer().unwrap() as u16;
-    let mut listener = Listener::new(port, db_connection);
+    let mut listener = Listener::new(config.get_port(), db_connection);
 
     rt.spawn(async move { listener.task().await });
 }
@@ -117,14 +113,7 @@ fn launch_listener(config : &Table, rt : &Runtime, db_connection : Connection)
 //----------------------------------------------------------------------------------------------------------------------------------
 /// Application entry point
 fn main() -> Result<(), ()> {
-    let path = std::path::Path::new("weather.toml");
-    let config_str = match std::fs::read_to_string(path) {
-        Ok(f) => f,
-        Err(e) => panic!("Failed to read config file {}", e)
-    };
-
-    let config: Table = config_str.parse().unwrap();
-//    dbg!(&config);
+    let config = config::Config::new();
 
     let (db_connection, db_table) = create_db_connection(&config);
 
