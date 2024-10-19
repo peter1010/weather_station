@@ -15,8 +15,8 @@ pub struct Wind {
 impl Wind {
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn new(dev_name : &str) -> Wind {
-        Wind {
+    pub fn new(dev_name : &str) -> Self {
+        Self {
             dev_name : dev_name.to_string(),
             speed : Mutex::new(stats::Accumulated::new())
         }

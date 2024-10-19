@@ -97,6 +97,18 @@ impl Config {
             None => panic!("No wind dev specified for outdoor in config file")
         }
     }
+
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_sock_user(&self) -> Option<(&str, &str)> {
+        let sock_user = self.config["scgi"]["sock_user"].as_str();
+        let sock_group = self.config["scgi"]["sock_group"].as_str();
+        if sock_user.is_none() || sock_group.is_none() {
+            println!("No SCGI sock user & group specified");
+            return None;
+        }
+        Some((sock_user.unwrap(), sock_group.unwrap()))
+    }
 }
 
 

@@ -9,7 +9,7 @@ use weather_err::{Result, WeatherError};
 
 use crate::config;
 
-type Connection = Arc<Mutex<sqlite::Connection>>;
+type Connection = Mutex<sqlite::Connection>;
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Sensor {
@@ -17,7 +17,7 @@ pub struct Sensor {
     columns : Vec<String>,
     db_connection : Connection,
     db_table : String,
-    last_collected_time : i64
+    last_collected_time : Mutex<i64>
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -37,7 +37,7 @@ impl Sensor {
             columns,
             db_connection,
             db_table,
-            last_collected_time
+            last_collected_time : Mutex::new(last_collected_time)
         })
     }
 
@@ -94,7 +94,7 @@ impl Sensor {
         let (db_file, db_table) = config.get_database(name);
         println!("Opening database {}", db_file);
 
-        let db_connection = Arc::new(Mutex::new(sqlite::open(db_file)?));
+        let db_connection = Mutex::new(sqlite::open(db_file)?);
 
         println!("Creating/using db table {}", db_table);
 
@@ -119,7 +119,6 @@ impl Sensor {
         // println!("{}", query);
 
         let conn = db_connection.lock().expect("Unexpected failure to lock mutex");
-
         let statement = (*conn).prepare(query)?;
 
         // Should only be one row!
@@ -135,7 +134,7 @@ impl Sensor {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn insert(&mut self, unix_time : i64, values : &HashMap::<String, f32>) {
+    fn insert(&self, unix_time : i64, values : &HashMap::<String, f32>) {
 
         if values.len() == 0 {
             return;
@@ -146,18 +145,26 @@ impl Sensor {
         }
         query.push_str(");");
         {
-            let conn = self.db_connection.lock().unwrap();
+            let conn = self.db_connection.lock().expect("Unexpected failure to lock mutex");
             (*conn).execute(query).unwrap();
         }
-        self.last_collected_time = unix_time;
+        {
+            let mut time = self.last_collected_time.lock().expect("Unexpected failure to lock mutex");
+            (*time) = unix_time;
+        }
     }
 
 
     //----------------------------------------------------------------------------------------------------------------------------------
-    pub async fn collect(&mut self) -> Result<()>{
+    pub async fn collect(&self) -> Result<()>{
         let mut stream = BufReader::new(TcpStream::connect(self.address).await?);
 
-        stream.write_all(format!("{}\n", self.last_collected_time + 1).as_bytes()).await?;
+        let next_time = {
+            let time = self.last_collected_time.lock().expect("Unexpected failure to lock mutex");
+            (*time) + 1
+        };
+
+        stream.write_all(format!("{}\n", next_time).as_bytes()).await?;
 
         let mut values = HashMap::new();
         let mut line = String::new();
