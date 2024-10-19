@@ -37,7 +37,7 @@ impl Listener {
             return Ok(());
         }
         let query = "select name from sqlite_master where type = 'table';";
-        let conn = self.db_connection.lock()?;
+        let conn = self.db_connection.lock().expect("Unexpected failure to lock mutex");
         for row in (*conn).prepare(query)?.into_iter() {
             self.table_name = Some(String::from(row?.read::<&str,_>("name")));
             return Ok(());
@@ -49,7 +49,7 @@ impl Listener {
     //------------------------------------------------------------------------------------------------------------------------------
     fn cfg_columns(&mut self) -> Result<()> {
         let query = format!("pragma table_info ('{}');", self.table_name.as_ref().unwrap());
-        let conn = self.db_connection.lock()?;
+        let conn = self.db_connection.lock().expect("Unexpected failure to lock mutex");
         self.column_names = Some((*conn)
                 .prepare(query)?
                 .into_iter()
@@ -68,7 +68,7 @@ impl Listener {
 
         let query = format!("select * from {} where unix_time > {};", self.table_name.as_ref().unwrap(), unix_time);
         {
-            let conn = self.db_connection.lock()?;
+            let conn = self.db_connection.lock().expect("Unexpected failure to lock mutex");
 
             let statement = (*conn).prepare(query)?;
 

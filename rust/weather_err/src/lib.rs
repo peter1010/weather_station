@@ -1,5 +1,4 @@
 use std::fmt;
-use std::sync::PoisonError;
 use tokio::io;
 use i2cdev::linux::LinuxI2CError;
 use sqlite;
@@ -35,16 +34,6 @@ impl From<&str> for WeatherError {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-impl<T> From<PoisonError<T>> for WeatherError {
-    fn from(error: PoisonError<T>) -> Self {
-        Self {
-            error : format!("Mutex Error {}", error)
-        }
-    }
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
 impl fmt::Debug for WeatherError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.error)
@@ -67,16 +56,6 @@ impl From<sqlite::Error> for WeatherError {
     fn from(error: sqlite::Error) -> Self {
         Self {
             error : format!("SQL Error {}", error)
-        }
-    }
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-impl From<toml::de::Error> for WeatherError {
-    fn from(error: toml::de::Error) -> Self {
-        Self {
-            error : format!("TOML Error {}", error)
         }
     }
 }

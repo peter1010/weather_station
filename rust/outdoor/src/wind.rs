@@ -24,17 +24,16 @@ impl Wind {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn process(&self, speed : f32) -> Result<()> {
-        let mut data = self.speed.lock()?;
+    fn process(&self, speed : f32) {
+        let mut data = self.speed.lock().expect("Unexpected failure to lock mutex");
         (*data).add(speed);
-        Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn sample(&self) -> Result<stats::Summary> {
-        let mut data =self.speed.lock()?;
-        Ok((*data).sample())
+    pub fn sample(&self) -> stats::Summary {
+        let mut data = self.speed.lock().expect("Unexpected failure to lock mutex");
+        (*data).sample()
     }
 
 
@@ -48,7 +47,7 @@ impl Wind {
             reader.read_line(&mut buffer).await?;
 
             match buffer.trim().parse::<f32>() {
-                Ok(value) => self.process(value)?,
+                Ok(value) => self.process(value),
                 Err(..) => ()
             };
         }

@@ -7,4 +7,3 @@ edition = "2021"
 tokio = { version = "1.40.0", features = ["fs", "io-util", "rt", "rt-multi-thread", "time", "net"] }
 i2cdev = { workspace = true }
 sqlite = { workspace = true }
-toml = { workspace = true }

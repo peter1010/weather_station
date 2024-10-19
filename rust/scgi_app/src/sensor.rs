@@ -103,10 +103,12 @@ impl Sensor {
             query.push_str(format!(", {} REAL", col).as_str());
         }
         query.push_str(", PRIMARY KEY(unix_time));");
+
         {
-            let conn = db_connection.lock()?;
+            let conn = db_connection.lock().expect("Unexpected failure to lock mutex");
             (*conn).execute(query)?;
         }
+
         Ok((db_connection, String::from(db_table)))
     }
 
@@ -116,7 +118,7 @@ impl Sensor {
         let query = format!("SELECT MAX(unix_time) from {};", db_table);
         // println!("{}", query);
 
-        let conn = db_connection.lock()?;
+        let conn = db_connection.lock().expect("Unexpected failure to lock mutex");
 
         let statement = (*conn).prepare(query)?;
 

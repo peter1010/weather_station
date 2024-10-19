@@ -1,7 +1,7 @@
 use i2cdev::linux::LinuxI2CDevice;
 use i2cdev::core::*;
 use std::fmt;
-use weather_err::{Result, WeatherError};
+use weather_err::Result;
 
 const BME688_ADDR : u16 = 0x76;
 
@@ -98,7 +98,7 @@ pub struct Bme688 {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn calc_oversampling(reqd : u8) -> Result<u8> {
+fn calc_oversampling(reqd : u8) -> u8 {
     let result;
     if reqd == 1 {
         result =  1;  // no oversampling
@@ -111,9 +111,9 @@ fn calc_oversampling(reqd : u8) -> Result<u8> {
     } else if reqd == 16 {
         result =  5; // 8x oversampling
     } else {
-        return Err(WeatherError::from("Conversion Error"));
+        panic!("Invalid oversample {} for BME688", reqd);
     }
-    Ok(result)
+    result
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -124,10 +124,13 @@ fn two_to_pow(exp : i8) -> f64 {
 //----------------------------------------------------------------------------------------------------------------------------------
 impl Bme688 {
 
-    pub fn new(dev_name : &str) -> Result<Self> {
-        let dev = LinuxI2CDevice::new(dev_name, BME688_ADDR)?;
+    pub fn new(dev_name : &str) -> Self {
+        let dev = match LinuxI2CDevice::new(dev_name, BME688_ADDR) {
+            Ok(dev) => dev,
+            Err(error) => panic!("Failed to open {} with address {} - {}", dev_name, BME688_ADDR, error)
+        };
 
-        let this = Self {
+        Self {
             dev,
             hum_oversampling : 0,
             temp_oversampling : 0,
@@ -139,8 +142,7 @@ impl Bme688 {
             par_h1 : 0, par_h2 : 0.0, par_h3 : 0.0, par_h4: 0.0, par_h5: 0.0, par_h6: 0.0, par_h7: 0.0,
             par_hvar3 : 0, par_hvar4 : 0.0, par_hvar5 : 0.0,
             temperature : 0.0,
-        };
-        Ok(this)
+        }
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
@@ -436,23 +438,20 @@ impl Bme688 {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn set_humdity_oversampling(&mut self, oversampling : u8) -> Result<()> {
-        self.hum_oversampling = calc_oversampling(oversampling)?;
-        Ok(())
+    pub fn set_humdity_oversampling(&mut self, oversampling : u8) {
+        self.hum_oversampling = calc_oversampling(oversampling);
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn set_temperature_oversampling(&mut self, oversampling : u8) -> Result<()>{
-        self.temp_oversampling = calc_oversampling(oversampling)?;
-        Ok(())
+    pub fn set_temperature_oversampling(&mut self, oversampling : u8) {
+        self.temp_oversampling = calc_oversampling(oversampling);
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn set_pressure_oversampling(&mut self, oversampling : u8) -> Result<()> {
-        self.pres_oversampling = calc_oversampling(oversampling)?;
-        Ok(())
+    pub fn set_pressure_oversampling(&mut self, oversampling : u8) {
+        self.pres_oversampling = calc_oversampling(oversampling);
     }
 
 
@@ -627,13 +626,13 @@ mod tests {
 
     #[test]
     fn read_temperature() {
-        let mut sensor = Bme688::new("/dev/i2c-bme688").unwrap();
+        let mut sensor = Bme688::new("/dev/i2c-bme688");
 
         sensor.cache_params().unwrap();
 
-        sensor.set_humdity_oversampling(16).unwrap();
-        sensor.set_pressure_oversampling(16).unwrap();
-        sensor.set_temperature_oversampling(16).unwrap();
+        sensor.set_humdity_oversampling(16);
+        sensor.set_pressure_oversampling(16);
+        sensor.set_temperature_oversampling(16);
 
 
         sensor.one_shot().unwrap();

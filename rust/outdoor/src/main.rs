@@ -88,7 +88,7 @@ fn create_temp_sensor(config : &config::Config) -> Sht31 {
     let dev_name = config.get_dev_name("outdoor");
     println!("Reading from {} for temp/humidity speeds", dev_name);
 
-    Sht31::new(dev_name).unwrap()
+    Sht31::new(dev_name)
 }
 
 
@@ -135,7 +135,7 @@ fn main() -> Result<(), ()> {
         println!("Tick");
         let unix_time = ticker.get_nearest_tick();
 
-        let wind_measurement = wind.sample().unwrap();
+        let wind_measurement = wind.sample();
 
         // Start sample..
         let temp_measurement = rt.block_on(read_temp(&mut temp));

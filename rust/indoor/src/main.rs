@@ -32,13 +32,13 @@ fn launch_listener(config : &config::Config, rt : &Runtime, db_connection : Conn
 //----------------------------------------------------------------------------------------------------------------------------------
 fn create_sensor(config : &config::Config) -> Result<bme688::Bme688> {
 
-    let mut sensor = bme688::Bme688::new(config.get_dev_name("indoor"))?;
+    let mut sensor = bme688::Bme688::new(config.get_dev_name("indoor"));
 
     sensor.cache_params()?;
 
-    sensor.set_humdity_oversampling(16)?;
-    sensor.set_pressure_oversampling(16)?;
-    sensor.set_temperature_oversampling(16)?;
+    sensor.set_humdity_oversampling(16);
+    sensor.set_pressure_oversampling(16);
+    sensor.set_temperature_oversampling(16);
 
     Ok(sensor)
 }

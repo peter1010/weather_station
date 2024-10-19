@@ -51,10 +51,13 @@ impl Sht31 {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn new(dev_name : &str) -> Result<Self> {
-        Ok(Self {
-            dev : LinuxI2CDevice::new(dev_name, SHT31_ADDR)?
-        })
+    pub fn new(dev_name : &str) -> Self {
+        Self {
+            dev : match LinuxI2CDevice::new(dev_name, SHT31_ADDR) {
+                Ok(dev) => dev,
+                Err(error) => panic!("Failed to open {} with address {} - {}", dev_name, SHT31_ADDR, error)
+            }
+        }
     }
 
 
@@ -118,7 +121,7 @@ mod tests {
 
     #[test]
     fn read_temperature() {
-        let mut sensor = Sht31::new("/dev/i2c-sht31").unwrap();
+        let mut sensor = Sht31::new("/dev/i2c-sht31");
 
         sensor.one_shot().unwrap();
         thread::sleep(Duration::from_secs(1));
