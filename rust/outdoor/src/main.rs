@@ -32,7 +32,7 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 //----------------------------------------------------------------------------------------------------------------------------------
 /// Create a ticker
 fn create_ticker(config : &config::Config) -> clock::Clock {
-    clock::Clock::new(config.get_sample_period() * 60).unwrap()
+    clock::Clock::new(config.get_sample_period() * 60)
 }
 
 

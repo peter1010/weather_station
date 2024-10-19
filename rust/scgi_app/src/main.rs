@@ -61,8 +61,7 @@ fn main() {
 
 //    rt.spawn(async move { listener.task().await });
 
-    let period = config.get_sample_period();
-    let ticker = clock::Clock::new(period * 60).unwrap();
+    let ticker = clock::Clock::new(config.get_sample_period() * 60);
 
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();

@@ -5,4 +5,3 @@ edition = "2021"
 
 [dependencies]
 chrono = { workspace = true }
-weather_err = { path = "../weather_err" }

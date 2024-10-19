@@ -1,5 +1,4 @@
 use chrono::{Utc, Timelike};
-use weather_err::{Result, WeatherError};
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Clock {
@@ -10,13 +9,13 @@ pub struct Clock {
 impl Clock {
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn new(period_in_secs : u32) -> Result<Self> {
+    pub fn new(period_in_secs : u32) -> Self {
         if 60 * 60 % period_in_secs != 0 {
-            return Err(WeatherError::from("Period must be a factor of 1 hour"));
+            panic!("Sample Period must be a factor of 1 hour, {} secs is not", period_in_secs);
         }
-        Ok(Clock {
+        Self {
             period_in_secs
-        })
+        }
     }
 
     //------------------------------------------------------------------------------------------------------------------------------

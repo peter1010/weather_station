@@ -61,7 +61,7 @@ async fn read_sensor(sensor : &mut bme688::Bme688) -> bme688::Summary {
 
 //----------------------------------------------------------------------------------------------------------------------------------
 fn create_ticker(config : &config::Config) -> clock::Clock {
-    clock::Clock::new(config.get_sample_period() * 60).unwrap()
+    clock::Clock::new(config.get_sample_period() * 60)
 }
 
 
