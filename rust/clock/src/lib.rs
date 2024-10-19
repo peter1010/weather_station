@@ -3,14 +3,14 @@ use weather_err::{Result, WeatherError};
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Clock {
-    period_in_secs : i32
+    period_in_secs : u32
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
 impl Clock {
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn new(period_in_secs : i32) -> Result<Self> {
+    pub fn new(period_in_secs : u32) -> Result<Self> {
         if 60 * 60 % period_in_secs != 0 {
             return Err(WeatherError::from("Period must be a factor of 1 hour"));
         }
@@ -22,7 +22,7 @@ impl Clock {
     //------------------------------------------------------------------------------------------------------------------------------
     pub fn get_nearest_tick(&self) -> i64 {
         let now = Utc::now();
-        let secs : i32 = (now.second() + 60 * now.minute()) as i32;
+        let secs = (now.second() + 60 * now.minute()) as u32;
         let mut secs_adj = secs % self.period_in_secs;
         if secs_adj > (self.period_in_secs/2) {
             secs_adj -= self.period_in_secs;
@@ -34,7 +34,7 @@ impl Clock {
     pub fn secs_to_next_tick(&self) -> u32 {
         let now = chrono::Utc::now();
 
-        let secs = (now.second() + 60 * now.minute()) as i32;
+        let secs = (now.second() + 60 * now.minute()) as u32;
         let delay = (self.period_in_secs - secs % self.period_in_secs) as u32;
         println!("Duration {}", delay);
         delay

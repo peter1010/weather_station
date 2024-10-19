@@ -43,7 +43,7 @@ async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
 
 //----------------------------------------------------------------------------------------------------------------------------------
 fn main() {
-    let config = config::Config::new().unwrap();
+    let config = config::Config::new();
 
     let rt = Runtime::new().unwrap();
 
@@ -61,7 +61,7 @@ fn main() {
 
 //    rt.spawn(async move { listener.task().await });
 
-    let period = config.get_sample_period().unwrap();
+    let period = config.get_sample_period();
     let ticker = clock::Clock::new(period * 60).unwrap();
 
     loop {

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use tokio::net::TcpStream;
 use tokio::io::{BufReader, AsyncWriteExt, AsyncBufReadExt};
-use weather_err::Result;
+use weather_err::{Result, WeatherError};
 
 use crate::config;
 
@@ -25,7 +25,10 @@ impl Sensor {
 
     //------------------------------------------------------------------------------------------------------------------------------
     pub async fn new(config : &config::Config, name : &str) -> Result<Self> {
-        let address = Self::get_address(&config, &name)?;
+        let address = match Self::get_address(&config, &name) {
+            Some(address) => address,
+            None => return Err(WeatherError::from("No IP address"))
+        };
         let columns = Self::get_column_names(&address).await?;
         let (db_connection, db_table) = Self::create_db_connection(&config, &columns, &name)?;
         let last_collected_time = Self::get_last_time(&db_connection, &db_table)?;
@@ -39,13 +42,23 @@ impl Sensor {
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    fn get_address(config : &config::Config, name : &str) -> Result<SocketAddr> {
-        let host = config.get_host(&name)?;
-        let port = config.get_port()?;
+    fn get_address(config : &config::Config, name : &str) -> Option<SocketAddr> {
+        let host = match config.get_host(&name) {
+            Some(host) => host,
+            None => return None
+        };
+        let port = config.get_port();
 
-        let mut addrs_iter = format!("{}:{}", host, port).to_socket_addrs()?;
+        let mut addrs_iter = match format!("{}:{}", host, port).to_socket_addrs() {
+            Ok(addrs_iter) => addrs_iter,
+            Err(error) => panic!("Failed to get IP addresses for {} - {}", host, error)
+        };
         println!("{:?}", addrs_iter);
-        Ok(addrs_iter.next().ok_or("No IP Address found")?)
+        let address = addrs_iter.next();
+        if address.is_none() {
+            panic!("No IP address found for {}", host);
+        }
+        address
     }
 
 
@@ -78,7 +91,7 @@ impl Sensor {
     //------------------------------------------------------------------------------------------------------------------------------
     fn create_db_connection(config : &config::Config, columns : &Vec<String>, name : &str)-> Result<(Connection, String)> {
 
-        let (db_file, db_table) = config.get_database(name)?;
+        let (db_file, db_table) = config.get_database(name);
         println!("Opening database {}", db_file);
 
         let db_connection = Arc::new(Mutex::new(sqlite::open(db_file)?));

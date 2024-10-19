@@ -1,6 +1,5 @@
 use std::path::Path;
 use toml::Table;
-use weather_err::Result;
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Config {
@@ -12,46 +11,72 @@ pub struct Config {
 impl Config {
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Self {
         let path = Path::new("weather.toml");
         let config_str = match std::fs::read_to_string(path) {
-            Ok(f) => f,
-            Err(e) => panic!("Failed to read config file {}", e)
+            Ok(config_str) => config_str,
+            Err(error) => panic!("Failed to read {:#?} {}", path, error)
         };
 
-        let config = config_str.parse()?;
+        let config = match config_str.parse() {
+            Ok(cfg) => cfg,
+            Err(error) => panic!("Config file error\n{}", error)
+        };
+
 //      dbg!(&config);
 
-        Ok(Self {
-            config
-        })
+        Self { config }
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_host(&self, name :&str) -> Option<&str> {
+        let host = self.config[name]["host"].as_str();
+        if host.is_none() {
+            println!("No host specified for {} in config file", name)
+        }
+        host
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_port(&self) -> u16 {
+        match self.config["common"]["port"].as_integer() {
+            Some(port) => port as u16,
+            None => panic!("No port specified in config file common section")
+        }
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_database(&self, name :&str) -> (&str, &str) {
+        let db_file = match self.config[name]["database"].as_str() {
+            Some(db_file) => db_file,
+            None => panic!("No database specified for {} in config file", name)
+        };
+        let db_table = match self.config[name]["db_table"].as_str() {
+            Some(db_table) => db_table,
+            None => panic!("No db_table specified for {} in config file", name)
+        };
+        (db_file, db_table)
+    }
+
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn get_sock_name(&self) -> Option<&str> {
+        let sock_name = self.config["scgi"]["sock_name"].as_str();
+        if sock_name.is_none() {
+            println!("No SCGI sock name specified");
+        }
+        sock_name
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_host(&self, name :&str) -> Result<&str> {
-        Ok(self.config[name]["host"].as_str().ok_or("No Host specified")?)
-    }
-
-    //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_port(&self) -> Result<u16> {
-        Ok(self.config["common"]["port"].as_integer().ok_or("No Port specified")? as u16)
-    }
-
-    //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_database(&self, name :&str) -> Result<(&str, &str)> {
-        let db_file = self.config[name]["database"].as_str().ok_or("No DB  specified")?;
-        let db_table = self.config[name]["db_table"].as_str().ok_or("No DB table specified")?;
-        Ok((db_file, db_table))
-    }
-
-    //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_sock_name(&self) -> Result<&str> {
-        Ok(self.config["scgi"]["sock_name"].as_str().ok_or("No valid sock name specified")?)
-    }
-
-    //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_sample_period(&self) -> Result<i32> {
-        Ok(self.config["common"]["sample_period_in_mins"].as_integer().ok_or("No valid Sample period specified")? as i32)
+    pub fn get_sample_period(&self) -> u32 {
+        match self.config["common"]["sample_period_in_mins"].as_integer() {
+            Some(period) => period as u32,
+            None => panic!("No Sample period specified in config file")
+        }
     }
 }
 
