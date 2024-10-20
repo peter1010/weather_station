@@ -83,7 +83,7 @@ impl Config {
 
     //------------------------------------------------------------------------------------------------------------------------------
     pub fn get_dev_name(&self, name : &str) -> &str {
-        match self.config[name]["dev"].as_str() {
+        match self.config[name]["temp_dev"].as_str() {
             Some(dev) => dev,
             None => panic!("No dev specified for {} in config file", name)
         }

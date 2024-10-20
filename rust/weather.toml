@@ -3,7 +3,7 @@ sample_period_in_mins = 15
 port = 8080
 
 [indoor]
-dev = "/dev/i2c-bme688"
+temp_dev = "/dev/i2c-bme688"
 database = "indoor.db"
 db_table = "Indoor"
 host = "gandalf.home.arpa"
