@@ -14,7 +14,7 @@ typedef struct {
 
 T_SerialBuffer SerialBuffer;
 
-
+//----------------------------------------------------------------------------------------------------------------------------------
 void init_serial(void)
 {
 	const unsigned int ubrr = FOSC/16/BAUD-1;
@@ -33,6 +33,8 @@ void init_serial(void)
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// If send UART is ready and there is data in the send buffer, send it
 void run_serial(void)
 {
 	if ((UCSR0A & (1<<UDRE0))) {
@@ -45,6 +47,8 @@ void run_serial(void)
 	}
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// Add byte to the serial send buffer
 void serial_write(char byte)
 {
 	int idx = SerialBuffer.headIdx;
@@ -56,6 +60,8 @@ void serial_write(char byte)
 	}
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// Add character string  to the serial send buffer
 void serial_writeln(char * str)
 {
 	while (*str != '\0') {
@@ -66,76 +72,64 @@ void serial_writeln(char * str)
 /*
 1 contact closure per 1.25 m/s
 100 mph = 44.704 m/s = 35.76 Hz
+
+1 mph = (60 * 60 * 10000)/(63360 * 254) m/s
+1 mph = (60 * 60 * 10000)/(64 * 99 * 10 * 254)
+1 mph = (56250)/(99 * 254)
+1 mph = (28125)/(9 * 11 * 127)
+1 mph = 3125/1397
 */
 
+
 typedef struct {
-	unsigned int tens;
 	unsigned int resolution;
-	unsigned int value;
-	char buffer[10];
-	int idx;
-	char leading_ch;
 } T_SpeedReporter;
 
 T_SpeedReporter Speed;
 
 void init_speed_reporter(unsigned int resolution)
 {
-	Speed.tens = 0;
 	Speed.resolution = resolution;
 }
 
-void run_speed_reporter(void)
-{
-	unsigned int tens = Speed.tens;
-	unsigned int value = Speed.value;
 
-	if (tens > 0) {
-		unsigned int digit = value / tens;
-		value -= digit * tens;
-		int idx = Speed.idx;
+//----------------------------------------------------------------------------------------------------------------------------------
+void report_speed(unsigned int speed)
+{
+	unsigned int tens = 10000U;
+	char leading_ch = ' ';
+	int idx = 0;
+	char buffer[10];
+	
+	while (tens > 0) {
+		unsigned int digit = speed / tens;
+		speed -= digit * tens;
 		const int point = (tens == Speed.resolution);
 		if (point) {
-			Speed.leading_ch = '0';
+			leading_ch = '0';
 		}
 		if (digit == 0) {
-			Speed.buffer[idx] = Speed.leading_ch;
+			buffer[idx] = leading_ch;
 		} else {
-			Speed.leading_ch = '0';
+			leading_ch = '0';
 			if (digit <= 9) {
-				Speed.buffer[idx] = digit + '0';
+				buffer[idx] = digit + '0';
 			} else {
-				Speed.buffer[idx] = '?';
+				buffer[idx] = '?';
 			}
 		}
 		idx++;
 		if (point) {
-			Speed.buffer[idx++] = '.';
+			buffer[idx++] = '.';
 		}
 		tens /= 10UL;
-		if (tens == 0) {
-			Speed.buffer[idx++] = '\n';
-			Speed.buffer[idx++] = '\0';
-			serial_writeln(Speed.buffer);
-		} else {
-			Speed.value = value;
-			Speed.idx = idx;
-		}
-		Speed.tens = tens;
 	}
+	buffer[idx++] = '\n';
+	buffer[idx++] = '\0';
+	serial_writeln(buffer);
 }
 
-void report_speed(unsigned int speed)
-{
-	unsigned int tens = Speed.tens;
-	if (tens == 0) {
-		Speed.value = speed;
-		Speed.idx = 0;
-		Speed.tens = 10000UL;
-		Speed.leading_ch = ' ';
-	}
-}
-
+//----------------------------------------------------------------------------------------------------------------------------------
 unsigned long ticks_per_metre(unsigned char val, unsigned long * pOneSecond)
 {
 	TCCR1B = val;
@@ -152,11 +146,12 @@ unsigned long ticks_per_metre(unsigned char val, unsigned long * pOneSecond)
 	unsigned long one_second = FOSC / divider;
 	*pOneSecond = one_second;
 	// 1 tick = FOSC/ divider, 1.25 metre per count
-	return (one_second * 125) / 100;
+	return (one_second * 5) / 4;
 }
 
 
-unsigned long delta_time(void)
+//----------------------------------------------------------------------------------------------------------------------------------
+static unsigned long delta_time(void)
 {
 	static unsigned int prev_time = 0;
 
@@ -166,21 +161,26 @@ unsigned long delta_time(void)
 	return delta;
 }
 
-
-int has_moved(void)
+//----------------------------------------------------------------------------------------------------------------------------------
+static int has_rotated(void)
 {
-	static unsigned char prevData = 0;
+	static unsigned char prev_raw_state = 0;
 
-	int moved = 0;
-	const unsigned char data = PINB &_BV(PORTB5);
-	if (prevData != data) {
-		moved = 1;
-		prevData = data;
+	const unsigned char state = PINB &_BV(PORTB5);
+
+	int rotated = 0;
+	if (prev_raw_state != state) {
+		// Pull Up, so zero means contact closed
+		if (state == 0) {
+			rotated = 1;
+		}
+		prev_raw_state = state;
 	}
-	return moved;
+	return rotated;
 }
 
 
+//----------------------------------------------------------------------------------------------------------------------------------
 int main(void)
 {
 	const unsigned int resolution = 10;
@@ -190,6 +190,7 @@ int main(void)
 
 	unsigned long one_second;
 	const unsigned long step = resolution * ticks_per_metre(3, &one_second);
+	const unsigned long debounce_period = one_second/50;
 
 	const unsigned long max_count = 0xFFFFFFFFUL - step;
 	// Some test code
@@ -201,25 +202,44 @@ int main(void)
 
 	unsigned long count = 0;
 	unsigned long time = 0;
+	const unsigned long measurement_period = 2 * one_second;
 
 	serial_writeln("Start\n");
 
 	while(1) {
-		/* Wait for empty transmit buffer */
-		run_serial();
 
-		run_speed_reporter();
-
-		time += delta_time();
-
-		if (has_moved()) {
-			count += step;
+		// Wait for start of first rotation..
+		while(1) {
+			if (has_rotated()) {
+				count = 0;
+				delta_time();
+				time = 0;
+				break;
+			}
+			
+			/* empty UART transmit buffer */
+			run_serial();
 		}
 
-		if ((count >= max_count) || (time > 2 * one_second)) {
-			report_speed((count + time/2)/time);
-			count = 0;
-			time = 0;
+		while(1) {
+
+			time += delta_time();
+
+			if (has_rotated()) {
+				count += step;
+				if (count >= max_count) {
+					break;
+				}
+			}
+
+			if (time > measurement_period) {
+				break;
+			}
+
+			/* empty UART transmit buffer */
+			run_serial();
 		}
+		
+		report_speed((count + time/2)/time);
 	}
 }
