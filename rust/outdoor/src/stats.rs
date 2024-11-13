@@ -23,10 +23,18 @@ impl Summary {
 
     //------------------------------------------------------------------------------------------------------------------------------
     pub fn new(accum : &Accumulated) -> Summary {
-        Summary {
-            max_value : accum.max_value,
-            min_value : accum.min_value,
-            ave_value : (accum.sum / (accum.num_of as f64)) as f32,
+        if accum.num_of > 0 {
+            Summary {
+                max_value : accum.max_value,
+                min_value : accum.min_value,
+                ave_value : (accum.sum / (accum.num_of as f64)) as f32
+            }
+        } else {
+            Summary {
+                max_value : 0.0,
+                min_value : 0.0,
+                ave_value : 0.0
+            }
         }
     }
 
