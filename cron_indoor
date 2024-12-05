@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# @reboot /bin/bash -li ~/cron_indoor
+
+screen -s "/bin/bash" -dmS "indoor"
+
+screen -S "indoor" -X stuff "cd ~/git_repo/GH_Weather_Station/rust\n"
+
+screen -S "indoor" -X stuff "cargo run --bin indoor\n"
+
