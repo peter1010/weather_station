@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# @reboot /bin/bash -li ~/cron_outdoor
+
+screen -s "/bin/bash" -dmS "outdoor"
+
+screen -S "outdoor" -X stuff "cd ~/git_repo/GH_Weather_Station/rust\n"
+
+screen -S "outdoor" -X stuff "cargo run --bin outdoor\n"
+
