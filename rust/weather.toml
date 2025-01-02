@@ -13,7 +13,7 @@ temp_dev = "/dev/i2c-sht31"
 wind_dev = '/dev/ttyACM0'
 database = "outdoor.db"
 db_table = "Outdoor"
-host = "eowyn.dyn.home.arpa"
+host = "eowyn.home.arpa"
 
 [scgi]
 sock_name = "/run/lighttpd/scgi_app"
