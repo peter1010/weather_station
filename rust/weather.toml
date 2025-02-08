@@ -16,7 +16,8 @@ db_table = "Outdoor"
 host = "eowyn.home.arpa"
 
 [scgi]
-sock_name = "/run/lighttpd/scgi_app"
+#sock_name = "/run/lighttpd/scgi_app"
+sock_name = "/home/peter/scgi_app"
 sock_user = "lighttpd"
 sock_group = "lighttpd"
 

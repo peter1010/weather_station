@@ -13,45 +13,52 @@ use crate::drop_privs::drop_privs;
 
 //----------------------------------------------------------------------------------------------------------------------------------
 pub struct Listener {
-    server : UnixListener,
     indoor_sensor : Arc<Sensor>,
-    outdoor_sensor : Arc<Sensor>
+    outdoor_sensor : Arc<Sensor>,
+    sock_name : String,
+    sock_user : String,
+    sock_group : String
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
 impl Listener {
 
 
-    //------------------------------------------------------------------------------------------------------------------------------
-    pub fn create_sock(sock_name : &str, sock_user : &str, sock_group :&str) -> UnixListener {
-
-        let _ = remove_file(sock_name);
-        // Next up we create a UNIX listener which will listen for incoming
-        let server = match UnixListener::bind(&sock_name) {
-            Ok(server) => server,
-            Err(error) => panic!("Failed to create {} - {}", sock_name, error)
-        };
-        println!("Listening on: {}", sock_name);
-        drop_privs(sock_name, sock_user, sock_group);
-        server
+   //------------------------------------------------------------------------------------------------------------------------------
+    pub fn new(sock_name : &str, sock_user : &str, sock_group : &str,
+                    indoor_sensor : Arc<Sensor>, outdoor_sensor : Arc<Sensor>) -> Self {
+        Self {
+            indoor_sensor,
+            outdoor_sensor,
+            sock_name : sock_name.to_string(),
+            sock_user : sock_user.to_string(),
+            sock_group : sock_group.to_string()
+        }
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub fn new(server : UnixListener, indoor_sensor : Arc<Sensor>, outdoor_sensor : Arc<Sensor>) -> Self {
-        Self {
-            server,
-            indoor_sensor,
-            outdoor_sensor
-        }
+    pub fn create_sock(&self) -> UnixListener {
+
+        let _ = remove_file(&self.sock_name);
+        // Next up we create a UNIX listener which will listen for incoming
+        let server = match UnixListener::bind(&self.sock_name) {
+            Ok(server) => server,
+            Err(error) => panic!("Failed to create {} - {}", self.sock_name, error)
+        };
+        println!("Listening on: {}", self.sock_name);
+        let _ = drop_privs(&self.sock_name, &self.sock_user, &self.sock_group);
+        server
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
     pub async fn task(&mut self) -> io::Result<()> {
 
+        let server = self.create_sock();
+
         loop {
-           let (conn, _) = self.server.accept().await?;
+           let (conn, _) = server.accept().await?;
 
            let mut reader = BufReader::new(conn);
 
@@ -83,10 +90,10 @@ impl Listener {
                 }
             }
             let mut writer = reader.into_inner();
-            writer.write_all(b"Status: 200 OK\r\n");
-            writer.write_all(b"Content-Type: text/plain\r\n");
-            writer.write_all(b"\r\n");
-            writer.write_all(b"Hello, world!\r\n");
+            writer.write_all(b"Status: 200 OK\r\n").await?;
+            writer.write_all(b"Content-Type: text/plain\r\n").await?;
+            writer.write_all(b"\r\n").await?;
+            writer.write_all(b"Hello, world!\r\n").await?;
             println!("Done");
        }
     }

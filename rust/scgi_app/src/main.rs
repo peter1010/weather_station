@@ -31,8 +31,6 @@ fn main() {
     let sock_name = config.get_sock_name().unwrap();
     let (user, group) = config.get_sock_user().unwrap();
 
-    let mut server = Listener::create_sock(sock_name, user, group);
-
     let rt = Runtime::new().unwrap();
 
     let indoor_sensor = Arc::new(rt.block_on(Sensor::new(&config, "indoor")).unwrap());
@@ -42,7 +40,7 @@ fn main() {
     rt.block_on(outdoor_sensor.collect()).unwrap();
 
 
-    let mut listener = Listener::new(server, indoor_sensor.clone(), outdoor_sensor.clone());
+    let mut listener = Listener::new(sock_name, user, group, indoor_sensor.clone(), outdoor_sensor.clone());
 
     rt.spawn(async move { listener.task().await });
 
