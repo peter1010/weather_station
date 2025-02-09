@@ -1,6 +1,7 @@
 use libc;
 use std::ffi::CString;
-use std::os::unix::fs::chown;
+use std::fs;
+use std::os::unix::fs::{PermissionsExt, chown};
 use weather_err::{Result, WeatherError};
 
 
@@ -43,7 +44,9 @@ pub fn drop_privs(sock_name: &str, uid_name : &str, gid_name : &str) -> Result<(
 
     let (uid, gid) = get_uid_and_gid(uid_name, gid_name)?;
 
-    chown(sock_name, Some(uid), Some(gid))?;
+    let _ = fs::set_permissions(sock_name, fs::Permissions::from_mode(0o770));
+    let _ = chown(sock_name, None, Some(gid));
+    let _ = chown(sock_name, Some(uid), None);
 
     let p_uid = unsafe {
         libc::getuid()

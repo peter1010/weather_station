@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# @reboot /bin/bash -li ~/cron_scgi
+
+screen -s "/bin/bash" -dmS "scgi_app"
+
+screen -S "scgi_app" -X stuff "cd ~/git_repo/GH_Weather_Station/rust\n"
+
+screen -S "scgi_app" -X stuff "cargo run --bin scgi_app\n"
+
