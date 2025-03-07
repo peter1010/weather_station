@@ -54,7 +54,10 @@ impl Sensor {
             Err(error) => panic!("Failed to get IP addresses for {} - {}", host, error)
         };
         println!("{:?}", addrs_iter);
-        let address = addrs_iter.next();
+        let mut address = addrs_iter.next();
+        if address?.is_ipv6() {
+            address = addrs_iter.next();
+        }
         if address.is_none() {
             panic!("No IP address found for {}", host);
         }
