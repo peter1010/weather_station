@@ -73,12 +73,12 @@ fn send_to_database(db_connection : &Connection, db_table : &str, unix_time : i6
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn create_wind_sensor(config : &config::Config) -> Arc<Wind> {
+fn create_wind_sensor(config : &config::Config) -> Wind {
 
     let dev_name = config.get_wind_dev_name();
     println!("Reading from {} for wind speeds", dev_name);
 
-    Arc::new(Wind::new(dev_name))
+    Wind::new(dev_name)
 }
 
 
@@ -124,9 +124,7 @@ fn main() -> Result<(), ()> {
 
     let rt = Runtime::new().unwrap();
 
-    let task_data = wind.clone();
-
-    rt.spawn(async move { task_data.task().await });
+    wind.start();
 
     launch_listener(&config, &rt, db_connection.clone());
 
