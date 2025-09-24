@@ -2,11 +2,10 @@
 /// Reading of Outdoor sensors
 ///
 
-use tokio::time::sleep;
-use tokio::runtime::Runtime;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use chrono::DateTime;
+use std::thread;
 use config;
 
 use clock;
@@ -22,9 +21,9 @@ type Connection = Arc<Mutex<sqlite::Connection>>;
 
 //----------------------------------------------------------------------------------------------------------------------------------
 /// Aync wait for a tick event
-async fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
+fn wait_tick(ticker : &clock::Clock) -> Result<(), ()> {
      let delay_secs = ticker.secs_to_next_tick();
-     sleep(Duration::from_secs(delay_secs.into())).await;
+     thread::sleep(Duration::from_secs(delay_secs.into()));
      Ok(())
 }
 
@@ -93,10 +92,10 @@ fn create_temp_sensor(config : &config::Config) -> Sht31 {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-async fn read_temp(sensor : &mut Sht31) -> sht31::Summary {
+fn read_temp(sensor : &mut Sht31) -> sht31::Summary {
     // Start sample..
     sensor.one_shot().unwrap();
-    sleep(Duration::from_secs(1)).await;
+    thread::sleep(Duration::from_secs(1));
     sensor.sample().unwrap()
 }
 
@@ -122,21 +121,19 @@ fn main() -> Result<(), ()> {
 
     let ticker = create_ticker(&config);
 
-    let rt = Runtime::new().unwrap();
-
     wind.start();
 
     launch_listener(&config, db_connection.clone());
 
     loop {
-        rt.block_on(wait_tick(&ticker)).unwrap();
+        wait_tick(&ticker).unwrap();
         println!("Tick");
         let unix_time = ticker.get_nearest_tick();
 
         let wind_measurement = wind.sample();
 
         // Start sample..
-        let temp_measurement = rt.block_on(read_temp(&mut temp));
+        let temp_measurement = read_temp(&mut temp);
 
         send_to_database(&db_connection, &db_table, unix_time, wind_measurement, temp_measurement);
     }
