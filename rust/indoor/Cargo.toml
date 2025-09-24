@@ -5,7 +5,6 @@ edition = "2021"
 
 
 [dependencies]
-tokio = { version = "1.37.0", features = ["fs", "io-util", "rt", "rt-multi-thread", "time"] }
 bme688 = { path = "../bme688" }
 clock = { path = "../clock" }
 listener = { path = "../listener" }

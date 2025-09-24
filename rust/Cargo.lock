@@ -227,7 +227,6 @@ dependencies = [
  "config",
  "listener",
  "sqlite",
- "tokio",
  "weather_err",
 ]
 

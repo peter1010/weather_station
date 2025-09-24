@@ -1,7 +1,6 @@
-use tokio::runtime::Runtime;
-use tokio::time::sleep;
 use std::time::Duration;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use sqlite;
 use config;
 
@@ -13,19 +12,19 @@ use weather_err::Result;
 type Connection = Arc<Mutex<sqlite::Connection>>;
 
 //----------------------------------------------------------------------------------------------------------------------------------
-async fn wait_tick(ticker : &clock::Clock) -> Result<()> {
+fn wait_tick(ticker : &clock::Clock) -> Result<()> {
      let delay_seconds = ticker.secs_to_next_tick();
-     sleep(Duration::from_secs(delay_seconds.into())).await;
+     thread::sleep(Duration::from_secs(delay_seconds.into()));
      Ok(())
 }
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn launch_listener(config : &config::Config, rt : &Runtime, db_connection : Connection)
+fn launch_listener(config : &config::Config, db_connection : Connection)
 {
     let mut listener = Listener::new(config.get_port(), db_connection);
 
-    rt.spawn(async move { listener.task().await });
+    listener.start();
 }
 
 
@@ -45,11 +44,11 @@ fn create_sensor(config : &config::Config) -> Result<bme688::Bme688> {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-async fn read_sensor(sensor : &mut bme688::Bme688) -> bme688::Summary {
+fn read_sensor(sensor : &mut bme688::Bme688) -> bme688::Summary {
     // Start sample..
     sensor.one_shot().unwrap();
     loop {
-        sleep(Duration::from_secs(1)).await;
+        thread::sleep(Duration::from_secs(1));
         if sensor.is_ready().unwrap() {
             break;
         }
@@ -97,16 +96,14 @@ fn main() {
 
     let ticker = create_ticker(&config);
 
-    let rt = Runtime::new().unwrap();
-
-    launch_listener(&config, &rt, db_connection.clone());
+    launch_listener(&config, db_connection.clone());
 
     loop {
-        rt.block_on(wait_tick(&ticker)).unwrap();
+        wait_tick(&ticker);
         println!("Tick");
         let unix_time = ticker.get_nearest_tick();
 
-        let measurement = rt.block_on(read_sensor(&mut sensor));
+        let measurement = read_sensor(&mut sensor);
         println!("{}", measurement);
 
         let temp = measurement.get_temperature();
