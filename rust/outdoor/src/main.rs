@@ -102,11 +102,11 @@ async fn read_temp(sensor : &mut Sht31) -> sht31::Summary {
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
-fn launch_listener(config : &config::Config, rt : &Runtime, db_connection : Connection)
+fn launch_listener(config : &config::Config, db_connection : Connection)
 {
     let mut listener = Listener::new(config.get_port(), db_connection);
 
-    rt.spawn(async move { listener.task().await });
+    listener.start();
 }
 
 
@@ -126,7 +126,7 @@ fn main() -> Result<(), ()> {
 
     wind.start();
 
-    launch_listener(&config, &rt, db_connection.clone());
+    launch_listener(&config, db_connection.clone());
 
     loop {
         rt.block_on(wait_tick(&ticker)).unwrap();

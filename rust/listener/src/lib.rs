@@ -2,10 +2,11 @@
 //! Listen to connections to read database data
 //!
 
-use tokio::net::TcpListener;
+use std::net::TcpListener;
 use sqlite;
-use tokio::io::{AsyncBufReadExt,AsyncWriteExt, BufReader};
+use std::io::{BufReader, BufRead, Write};
 use std::sync::{Arc, Mutex};
+use std::thread;
 use weather_err::{Result, WeatherError};
 
 
@@ -61,14 +62,16 @@ impl Listener {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    async fn measurement_resp(&self, unix_time : i64, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) -> Result<()> {
+    fn measurement_resp(db_connection : &Arc<Mutex<sqlite::Connection>>, column_names : &Vec<String>,
+                table_name : &str,
+                unix_time : i64, stream : &mut impl Write) -> Result<()> {
         println!("Rcv'd {:?}", unix_time);
 
         let mut response = String::new();
 
-        let query = format!("select * from {} where unix_time > {};", self.table_name.as_ref().unwrap(), unix_time);
+        let query = format!("select * from {} where unix_time > {};", table_name, unix_time);
         {
-            let conn = self.db_connection.lock().expect("Unexpected failure to lock mutex");
+            let conn = db_connection.lock().expect("Unexpected failure to lock mutex");
 
             let statement = (*conn).prepare(query)?;
 
@@ -78,39 +81,41 @@ impl Listener {
             {
                 // println!("{:?}", row);
                 response += &(format!("unix_time = {}", row.read::<i64, _>("unix_time")) + "\n");
-                for col in self.column_names.as_ref().unwrap() {
+                for col in column_names {
                     response += &(format!("\t{} = {}", col, row.read::<f64, _>(col.as_str())) + "\n");
                 }
             }
         }
 
-        stream.write_all(response.as_bytes()).await?;
-        stream.write_all(b"\n").await?;
+        stream.write_all(response.as_bytes())?;
+        stream.write_all(b"\n")?;
         Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    async fn columns_resp(&self, stream : &mut (impl AsyncWriteExt + std::marker::Unpin)) -> Result<()>{
+    fn columns_resp(column_names : &Vec<String>, stream : &mut impl Write) -> Result<()>{
         println!("Rcv'd columns");
 
         let mut response = String::new();
 
-        for column in self.column_names.as_ref().unwrap() {
+        for column in column_names {
             response += &(String::from(column) + "\n");
         }
         response += &("\n");
-        stream.write_all(response.as_bytes()).await?;
+        println!("{}", response);
+        stream.write_all(response.as_bytes())?;
         Ok(())
     }
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    async fn process_client(&mut self, mut stream : impl AsyncWriteExt + AsyncBufReadExt + std::marker::Unpin) -> Result<()>{
+    fn process_client(column_names: &Vec<String>, table_name: &str, 
+                db_connection: &Arc<Mutex<sqlite::Connection>>, mut stream_in : impl BufRead, mut stream_out : impl Write) -> Result<()>{
         loop {
             let mut line = String::new();
 
-            let n = stream.read_line(&mut line).await?;
+            let n = stream_in.read_line(&mut line)?;
 
             if n == 0 {
                 return Ok(());
@@ -118,37 +123,52 @@ impl Listener {
             line = String::from(line.trim());
 
             if line == "columns" {
-                self.columns_resp(&mut stream).await?;
+                Self::columns_resp(&column_names, &mut stream_out)?;
             } else {
                 match line.parse::<i64>() {
-                    Ok(unix_time) => self.measurement_resp(unix_time, &mut stream).await?,
-                    Err(..) => stream.write_all(format!("Error unknown command {}\n", line).as_bytes()).await?
+                    Ok(unix_time) => Self::measurement_resp(db_connection, column_names, table_name,unix_time, &mut stream_out)?,
+                    Err(..) => stream_out.write_all(format!("Error unknown command {}\n", line).as_bytes())?
                 }
             }
         }
     }
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub async fn task(&mut self) -> Result<()> {
-        self.cfg_table()?;
-        self.cfg_columns()?;
+    pub fn start(&mut self) {
+        self.cfg_table().unwrap();
+        self.cfg_columns().unwrap();
+
+        let port = self.port;
+        let column_names = self.column_names.clone().unwrap().clone();
+        let db_connection = self.db_connection.clone();
+        let table_name = self.table_name.clone().unwrap().clone();
+
+        thread::spawn(move || { 
+            let _ = Self::task(port, column_names, table_name, db_connection); 
+        });
+    }
+
+    //------------------------------------------------------------------------------------------------------------------------------
+    pub fn task(port : u16, column_names: Vec<String>, 
+        table_name: String, db_connection : Arc<Mutex<sqlite::Connection>>) -> Result<()> {
 
         // println!("{:?}", self.column_names);
-        let sock_addr = format!("0.0.0.0:{}", self.port);
+        let sock_addr = format!("0.0.0.0:{}", port);
 
         // Next up we create a TCP listener which will listen for incoming
         // connections. This TCP listener is bound to the address we determined
         // above and must be associated with an event loop.
-        let listener = TcpListener::bind(&sock_addr).await?;
+        let listener = TcpListener::bind(&sock_addr)?;
         println!("Listening on: {}", sock_addr);
 
         loop {
             // Asynchronously wait for an inbound socket.
-            let (socket, _) = listener.accept().await?;
+            let (socket, _) = listener.accept()?;
 
-            let stream = BufReader::new(socket);
+            let stream_in = BufReader::new(&socket);
+            let stream_out = &socket;
 
-            self.process_client(stream).await?
+            Self::process_client(&column_names, &table_name, &db_connection, stream_in, stream_out)?
         }
     }
 }
