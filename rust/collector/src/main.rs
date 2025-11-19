@@ -11,7 +11,6 @@ use config;
 
 mod scgi;
 mod sensor;
-mod drop_privs;
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -27,7 +26,6 @@ fn main() {
     let config = config::Config::new();
 
     let sock_name = config.get_sock_name().unwrap();
-    let (user, group) = config.get_sock_user().unwrap();
 
     let rt = Runtime::new().unwrap();
 
@@ -38,7 +36,7 @@ fn main() {
     rt.block_on(outdoor_sensor.collect()).unwrap();
 
 
-    let mut listener = Listener::new(sock_name, user, group, indoor_sensor.clone(), outdoor_sensor.clone());
+    let mut listener = Listener::new(sock_name, indoor_sensor.clone(), outdoor_sensor.clone());
 
     rt.spawn(async move { listener.task().await });
 

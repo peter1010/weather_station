@@ -8,7 +8,6 @@ use std::sync::Arc;
 use tokio::io::{self,AsyncBufReadExt,AsyncWriteExt, AsyncReadExt, BufReader};
 use crate::sensor::Sensor;
 use std::fs::remove_file;
-use crate::drop_privs::drop_privs;
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -16,8 +15,6 @@ pub struct Listener {
     indoor_sensor : Arc<Sensor>,
     outdoor_sensor : Arc<Sensor>,
     sock_name : String,
-    sock_user : String,
-    sock_group : String
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -25,14 +22,11 @@ impl Listener {
 
 
    //------------------------------------------------------------------------------------------------------------------------------
-    pub fn new(sock_name : &str, sock_user : &str, sock_group : &str,
-                    indoor_sensor : Arc<Sensor>, outdoor_sensor : Arc<Sensor>) -> Self {
+    pub fn new(sock_name : &str, indoor_sensor : Arc<Sensor>, outdoor_sensor : Arc<Sensor>) -> Self {
         Self {
             indoor_sensor,
             outdoor_sensor,
             sock_name : sock_name.to_string(),
-            sock_user : sock_user.to_string(),
-            sock_group : sock_group.to_string()
         }
     }
 
@@ -47,7 +41,6 @@ impl Listener {
             Err(error) => panic!("Failed to create {} - {}", self.sock_name, error)
         };
         println!("Listening on: {}", self.sock_name);
-        let _ = drop_privs(&self.sock_name, &self.sock_user, &self.sock_group);
         server
     }
 
