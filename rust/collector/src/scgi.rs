@@ -62,6 +62,10 @@ impl Listener {
 
            let mut reader = BufReader::new(conn);
 
+            let mut debug = vec![0; 10];
+            let _ = reader.read_exact(& mut debug);
+            println!("data: {:?}", debug);
+
            let mut hdr_fields = HashMap::new();
 
            let mut hdr_length = vec![];

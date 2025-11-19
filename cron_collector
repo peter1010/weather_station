@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# @reboot /bin/bash -li ~/cron_collector
+
+if ! command -v tmux >/dev/null 2>&1
+then
+	screen -s "/bin/bash" -dmS "collector"
+
+	screen -S "collector" -X stuff "cd ~/git_repo/GH_Weather_Station/rust\n"
+
+	screen -S "collector" -X stuff "cargo run --bin collector\n"
+else
+	tmux new-session -d -c "${HOME}/git_repo/GH_Weather_Station/rust" "cargo run --bin collector"
+fi
