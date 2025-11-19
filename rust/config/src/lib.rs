@@ -62,15 +62,6 @@ impl Config {
     }
 
 
-    //------------------------------------------------------------------------------------------------------------------------------
-    pub fn get_sock_name(&self) -> Option<&str> {
-        let sock_name = self.config["scgi"]["sock_name"].as_str();
-        if sock_name.is_none() {
-            println!("No SCGI sock name specified");
-        }
-        sock_name
-    }
-
 
     //------------------------------------------------------------------------------------------------------------------------------
     pub fn get_sample_period(&self) -> u32 {
