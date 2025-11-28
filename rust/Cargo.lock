@@ -144,7 +144,6 @@ dependencies = [
  "config",
  "libc",
  "sqlite",
- "tokio",
  "toml",
  "weather_err",
 ]

@@ -1,10 +1,11 @@
 
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::sync::{Arc, Mutex};
+use std::sync::{Mutex};
 use std::collections::HashMap;
 
-use tokio::net::TcpStream;
-use tokio::io::{BufReader, AsyncWriteExt, AsyncBufReadExt};
+use std::net::TcpStream;
+//use tokio::io::{BufReader, AsyncWriteExt, AsyncBufReadExt};
+use std::io::{BufReader, BufRead, Write};
 use weather_err::{Result, WeatherError};
 
 use crate::config;
@@ -24,12 +25,12 @@ pub struct Sensor {
 impl Sensor {
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub async fn new(config : &config::Config, name : &str) -> Result<Self> {
+    pub fn new(config : &config::Config, name : &str) -> Result<Self> {
         let address = match Self::get_address(&config, &name) {
             Some(address) => address,
             None => return Err(WeatherError::from("No IP address"))
         };
-        let columns = Self::get_column_names(&address).await?;
+        let columns = Self::get_column_names(&address).unwrap();
         let (db_connection, db_table) = Self::create_db_connection(&config, &columns, &name)?;
         let last_collected_time = Self::get_last_time(&db_connection, &db_table)?;
         Ok(Self {
@@ -66,17 +67,20 @@ impl Sensor {
 
 
     //------------------------------------------------------------------------------------------------------------------------------
-    pub async fn get_column_names(addr : &SocketAddr) -> Result<Vec<String>> {
+    pub fn get_column_names(addr : &SocketAddr) -> Result<Vec<String>> {
 
-        let mut stream = BufReader::new(TcpStream::connect(addr).await?);
+        let socket = TcpStream::connect(addr).unwrap();
 
-        stream.write_all(b"columns\n").await?;
+        let mut stream_in = BufReader::new(&socket);
+        let mut stream_out = &socket;
+
+        stream_out.write_all(b"columns\n");
 
         let mut columns = Vec::<String>::new();
 
         loop {
             let mut line = String::new();
-            let n = stream.read_line(&mut line).await?;
+            let n = stream_in.read_line(&mut line).unwrap();
             if n == 0 {
                 break;
             }
@@ -159,22 +163,25 @@ impl Sensor {
 
 
     //----------------------------------------------------------------------------------------------------------------------------------
-    pub async fn collect(&self) -> Result<()>{
-        let mut stream = BufReader::new(TcpStream::connect(self.address).await?);
+    pub fn collect(&self) -> Result<()>{
+        let socket = TcpStream::connect(self.address).unwrap();
+
+        let mut stream_in = BufReader::new(&socket);
+        let mut stream_out = &socket;
 
         let next_time = {
             let time = self.last_collected_time.lock().expect("Unexpected failure to lock mutex");
             (*time) + 1
         };
 
-        stream.write_all(format!("{}\n", next_time).as_bytes()).await?;
+        stream_out.write_all(format!("{}\n", next_time).as_bytes());
 
         let mut values = HashMap::new();
         let mut line = String::new();
         let mut time : i64 = 0;
 
         loop {
-            let n = stream.read_line(&mut line).await?;
+            let n = stream_in.read_line(&mut line).unwrap();
             if n == 0 {
                 break;
             }
